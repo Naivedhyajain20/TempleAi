@@ -9,6 +9,7 @@ import EmergencyAlertsSection from "@/components/sections/EmergencyAlertsSection
 import TrafficManagementSection from "@/components/sections/TrafficManagementSection";
 import MobileAppSection from "@/components/sections/MobileAppSection";
 import SpecialAssistanceSection from "@/components/sections/SpecialAssistanceSection";
+import AIAssistanceSection from "@/components/sections/AIAssistanceSection";
 import TempleMapSection from "@/components/sections/TempleMapSection";
 import ContactSection from "@/components/sections/ContactSection";
 
@@ -25,6 +26,7 @@ const Index = () => {
       <EmergencyAlertsSection />
       <TrafficManagementSection />
       <SpecialAssistanceSection />
+      <AIAssistanceSection />
       <MobileAppSection />
       <ContactSection />
       <Footer />

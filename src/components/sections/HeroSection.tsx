@@ -11,7 +11,7 @@ const HeroSection = () => {
       {/* Animated Background */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-background to-accent/20">
         <div 
-          className="absolute inset-0 bg-cover bg-center opacity-30 mix-blend-overlay"
+          className="absolute inset-0 bg-cover bg-center opacity-100 mix-blend-overlay"
           style={{ backgroundImage: `url(${templeHero})` }}
         ></div>
       </div>
