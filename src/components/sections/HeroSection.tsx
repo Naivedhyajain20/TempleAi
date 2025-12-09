@@ -72,7 +72,7 @@ const HeroSection = () => {
             </div>
             <div className="p-6 rounded-lg bg-card/50 backdrop-blur border border-border animate-scale-in [animation-delay:400ms]">
               <div className="text-4xl font-bold text-success">24/7</div>
-              <div className="text-muted-foreground mt-2">Live Monitoring</div>
+              <div className="text-muted-foreground mt-2">Real Time Live Monitoring</div>
             </div>
           </div>
         </div>

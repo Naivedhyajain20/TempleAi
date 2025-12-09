@@ -221,7 +221,6 @@ const AIAssistanceSection = () => {
       return "Photography allowed in outer areas. No photography inside main sanctum. Professional photography services available. Drone photography not permitted. Tripods allowed with permission.";
     }
 
-    
     if (
       lowerQuery.includes("dress") ||
       lowerQuery.includes("clothing") ||
@@ -363,11 +362,12 @@ const AIAssistanceSection = () => {
             Temple AI Assistant
           </h1>
           <p className="text-xl text-muted-foreground font-serif">
-            Get instant answers about <span className="bg-gradient-warm bg-clip-text text-transparent">
-             Somnath Temple
-            </span> and other sacred sites in
-            Gujarat. Ask about locations, timings, facilities, and everything
-            you need to know.
+            Get instant answers about{" "}
+            <span className="bg-gradient-warm bg-clip-text text-transparent">
+              Somnath Temple
+            </span>{" "}
+            and other sacred sites in Gujarat. Ask about locations, timings,
+            facilities, and everything you need to know.
           </p>
         </div>
 

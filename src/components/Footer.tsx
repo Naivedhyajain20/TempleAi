@@ -9,7 +9,7 @@ const Footer = () => {
           <div>
             <div className="flex items-center gap-2 mb-4">
               <span className="text-2xl">🛕</span>
-              <span className="font-bold text-xl">DivineFlow</span>
+              <span className="font-bold text-xl">SomPath</span>
             </div>
             <p className="text-sm text-muted-foreground">
               Transforming pilgrimage management with AI and IoT for a safer,
@@ -123,7 +123,7 @@ const Footer = () => {
 
         {/* Bottom Bar */}
         <div className="pt-8 border-t border-border text-center text-sm text-muted-foreground">
-          <p>© 2024 DivineFlow. All rights reserved. | Privacy Policy | Terms of Service</p>
+          <p>© 2024 SomPath. All rights reserved. | Privacy Policy | Terms of Service</p>
         </div>
       </div>
     </footer>

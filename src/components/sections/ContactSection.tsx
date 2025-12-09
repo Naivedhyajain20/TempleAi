@@ -185,10 +185,10 @@ const ContactSection = () => {
                     For general inquiries and support
                   </p>
                   <a
-                    href="mailto:contact@divineflow.com"
+                    href="mailto:contact@SomPath.com"
                     className="text-primary hover:underline"
                   >
-                    contact@divineflow.com
+                    contact@SomPath.com
                   </a>
                 </div>
               </div>
@@ -222,7 +222,7 @@ const ContactSection = () => {
                 <div>
                   <h4 className="font-semibold mb-1">Visit Us</h4>
                   <p className="text-muted-foreground text-sm">
-                    DivineFlow Headquarters
+                    SomPath Headquarters
                     <br />
                     Gandhinagar, Gujarat
                     <br />

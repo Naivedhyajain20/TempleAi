@@ -30,7 +30,7 @@ const Navbar = () => {
           <a href="#home" className="flex items-center space-x-2">
             <span className="text-2xl">🛕</span>
             <span className="font-bold text-xl bg-gradient-warm bg-clip-text text-transparent">
-              DivineFlow
+              SomPath
             </span>
           </a>
 
