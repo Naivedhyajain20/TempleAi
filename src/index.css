@@ -53,10 +53,10 @@ All colors MUST be HSL.
     --gradient-warm: linear-gradient(135deg, hsl(25 95% 53%), hsl(0 72% 51%));
     --gradient-cool: linear-gradient(135deg, hsl(217 91% 60%), hsl(142 76% 36%));
     --gradient-spiritual: linear-gradient(135deg, hsl(39 100% 50%), hsl(25 95% 53%));
-    
+
     --shadow-spiritual: 0 20px 40px -10px hsl(25 95% 53% / 0.3);
     --shadow-tech: 0 20px 40px -10px hsl(217 91% 60% / 0.3);
-    
+
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
     --sidebar-background: 0 0% 98%;
@@ -97,7 +97,7 @@ All colors MUST be HSL.
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
-    
+
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 224.3 76.3% 48%;
@@ -119,6 +119,32 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground overflow-hidden h-screen w-screen fixed;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  .section-container {
+    @apply relative h-full w-full overflow-hidden flex flex-col pt-16;
+  }
+
+  .view-content {
+    @apply flex-1 overflow-y-auto scrollbar-hide px-4 py-8;
+  }
+
+  .glass-panel {
+    @apply bg-black/40 backdrop-blur-3xl border border-white/10 shadow-2xl;
+  }
+
+  @keyframes scan {
+    0%, 100% { top: 0%; opacity: 0.5; }
+    50% { top: 100%; opacity: 1; }
+  }
+
+  .animate-scan {
+    animation: scan 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
   }
 }

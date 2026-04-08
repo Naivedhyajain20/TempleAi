@@ -123,7 +123,9 @@ const Footer = () => {
 
         {/* Bottom Bar */}
         <div className="pt-8 border-t border-border text-center text-sm text-muted-foreground">
-          <p>© 2024 SomPath. All rights reserved. | Privacy Policy | Terms of Service</p>
+          <p className="flex items-center justify-center gap-1.5 hover:text-primary transition-colors duration-300">
+            © Made with <span className="text-red-500 animate-pulse">❤️</span> by <span className="font-semibold tracking-wider text-foreground/80">NAIVEDHYA JAIN</span>
+          </p>
         </div>
       </div>
     </footer>

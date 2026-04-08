@@ -10,15 +10,22 @@ const HeroSection = () => {
     >
       {/* Animated Background */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-background to-accent/20">
-        <div 
+        <div
           className="absolute inset-0 bg-cover bg-center opacity-100 mix-blend-overlay"
           style={{ backgroundImage: `url(${templeHero})` }}
         ></div>
       </div>
 
+      {/* Large Watermark */}
+      <div className="absolute inset-x-0 top-0 pointer-events-none select-none flex items-start justify-center z-0 pt-9 overflow-visible">
+        <h1 className="text-[16vw] font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white/70 via-white/15  to-transparent leading-none animate-fade-in text-center w-full origin-top scale-y-110">
+          SOMPATH
+        </h1>
+      </div>
+
       {/* Content */}
       <div className="relative z-10 container mx-auto px-4 py-20 pt-32">
-        <div className="max-w-4xl mx-auto text-center space-y-8 animate-fade-in">
+        <div className="max-w-4xl mx-auto text-center space-y-8 animate-fade-in relative z-10">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 animate-pulse">
             <Activity className="w-4 h-4 text-primary" />
             <span className="text-sm font-medium text-primary">

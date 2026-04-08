@@ -8,11 +8,16 @@ import {
   Info,
   Mic,
   MicOff,
+  TrendingUp,
+  Shield,
+  Zap,
+  ArrowRight,
+  Sparkles
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 const AIAssistanceSection = () => {
   const [query, setQuery] = useState("");
@@ -20,457 +25,268 @@ const AIAssistanceSection = () => {
     {
       type: "ai",
       content:
-        "Hello! I'm your AI assistant for temples in Gujarat. Ask me anything about Somnath Temple or other sacred sites - locations, timings, facilities, and more!",
+        "Namaste! I'm your Temple AI Concierge. I've analyzed the current grid: Crowd levels are 15% higher than usual today. How can I assist your pilgrimage?",
     },
   ]);
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
-  const recognitionRef = useRef<any>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   useEffect(() => {
-    // Check if speech recognition is supported
-    const SpeechRecognition =
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      setIsSupported(true);
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
-      recognitionRef.current.lang = "en-US";
+    scrollToBottom();
+  }, [messages]);
 
-      recognitionRef.current.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setQuery(transcript);
-        setIsListening(false);
-      };
+  // Insights Data
+  const insights = [
+    { title: "Peak Alert", desc: "Expect surge at 12:00 PM Aarti", icon: TrendingUp, color: "text-orange-500" },
+    { title: "Safe Passage", desc: "Gate 2 throughput is optimal", icon: Shield, color: "text-emerald-500" },
+    { title: "Weather Sync", desc: "Clear skies for evening darshan", icon: Zap, color: "text-blue-500" },
+  ];
 
-      recognitionRef.current.onend = () => {
-        setIsListening(false);
-      };
-
-      recognitionRef.current.onerror = (event: any) => {
-        console.error("Speech recognition error:", event.error);
-        setIsListening(false);
-      };
-    }
-  }, []);
-
-  const startListening = () => {
-    if (recognitionRef.current && !isListening) {
-      setIsListening(true);
-      recognitionRef.current.start();
+  // --- HIGH-DENSITY TEMPLE KNOWLEDGE BASE ---
+  const TEMPLE_KNOWLEDGE = {
+    rituals: {
+      aarti: {
+        keywords: ["aarti", "prayer", "pooja", "puja", "shringar"],
+        content: "The daily Aarti schedule is as follows:\n- **Mangal Aarti**: 06:15 AM (Morning opening)\n- **Shringar Aarti**: 07:00 AM (Deity decoration)\n- **Bhog Aarti**: 12:00 PM (Mid-day offering)\n- **Sandhya Aarti**: 07:00 PM (Evening transition)\n- **Shayan Aarti**: 09:15 PM (Night closing)\n\n*Note: Special Shringar Darshan occurs throughout the day except during Bhog.*",
+        suggestions: ["Book Puja Slot", "View Live Stream"]
+      },
+      darshan: {
+        keywords: ["darshan", "see", "view", "idol", "shiva"],
+        content: "General Darshan is free and available from 06:00 AM to 09:00 PM. \n- **VIP Darshan**: ₹500 (Priority entry)\n- **Senior Citizens**: Free priority lane available at East Gate.\n- **Peak Hours**: 10:00 AM - 01:00 PM and 06:00 PM - 08:00 PM.",
+        suggestions: ["Check Queue Time", "VIP Booking"]
+      }
+    },
+    infrastructure: {
+      washrooms: {
+        keywords: ["washroom", "toilet", "restroom", "bathroom", "loo"],
+        content: "We have 4 high-hygiene zones:\n1. **East Gate**: Near the main security check.\n2. **North Gate**: Near the parking exit.\n3. **Prasad Counter**: Behind the main dining hall.\n4. **Public Plaza**: Opposite the digital museum.\n*All zones have accessible facilities for the disabled.*",
+        suggestions: ["Show on Map", "Find nearest"]
+      },
+      parking: {
+        keywords: ["parking", "park", "car", "bike", "vehicle", "scooter"],
+        content: "Parking is managed in 3 main zones:\n- **Zone A (North)**: Large vehicles and SUVs (₹50).\n- **Zone B (East)**: Two-wheelers only (Free).\n- **Zone C (VIP)**: Nearest to main gate (₹100).\n*Valet services are available at the East Gate drop-off.*",
+        suggestions: ["Check Availability", "Navigate to Zone A"]
+      },
+      gates: {
+        keywords: ["gate", "entry", "exit", "entrance"],
+        content: "- **East Gate**: The main ceremonial entrance. Security check takes ~10 mins.\n- **North Gate**: Closest to the main parking and bus stand.\n- **South Gate**: Direct access to the VIP lounge and administrative block.",
+        suggestions: ["Check Gate Wait Time"]
+      }
+    },
+    history: {
+      about: {
+        keywords: ["history", "rebuilt", "construction", "story", "patel", "chalukya"],
+        content: "Somnath is the first of the 12 Jyotirlingas. \n- **Architectural Style**: Chalukya (Kailash Mahameru Prasad).\n- **Reconstruction**: It has been destroyed and rebuilt 7 times (historically 17). The current structure was envisioned by **Sardar Vallabhbhai Patel** in 1951.\n- **Significance**: It stands on the shore of the Arabian Sea, exactly where there is no land between the temple shore and the South Pole.",
+        suggestions: ["Audio Guide", "Museum Info"]
+      }
+    },
+    logistics: {
+      travel: {
+        keywords: ["reach", "reach", "bus", "train", "airport", "diu", "rajkot", "transport"],
+        content: "How to get here:\n- **Train**: Somnath Station (SMNH) is 5km away. Veraval (VRL) is 7km.\n- **Air**: Nearest airport is Diu (90km) or Rajkot (200km).\n- **Road**: NH8D connects Veraval to the rest of Gujarat. State transport buses run every 30 mins from Ahmedabad.",
+        suggestions: ["Hire Taxi", "Bus Schedule"]
+      },
+      accommodation: {
+        keywords: ["stay", "hotel", "room", "dormitory", "sleep", "lodge"],
+        content: "Temple management offers several guest houses:\n- **Sagar Darshan**: Sea-front premium rooms.\n- **Lilavati Guest House**: Standard family rooms.\n- **Maheshwari Bhawan**: Economical stays.\n*We recommend booking 15 days in advance during festivals.*",
+        suggestions: ["Check Room Availability"]
+      }
+    },
+    emergency: {
+      medical: {
+        keywords: ["doctor", "medical", "hospital", "ambulance", "hurt", "emergency"],
+        content: "24/7 dedicated first-aid clinic is available between Gate 1 and the High-Mast tower. For critical cases, an ambulance is stationed at the South Gate. Contact: **+91 2876 231234**.",
+        suggestions: ["Call Emergency", "First Aid Info"]
+      }
     }
   };
 
-  const stopListening = () => {
-    if (recognitionRef.current && isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
+  const getAIResponse = (userQuery: string) => {
+    const query = userQuery.toLowerCase();
+    
+    // Weighted search across categories
+    let bestMatch: any = null;
+    let maxWeight = 0;
+
+    Object.values(TEMPLE_KNOWLEDGE).forEach(category => {
+      Object.values(category).forEach((item: any) => {
+        let weight = 0;
+        item.keywords.forEach((kw: string) => {
+          if (query.includes(kw)) weight++;
+        });
+
+        if (weight > maxWeight) {
+          maxWeight = weight;
+          bestMatch = item;
+        }
+      });
+    });
+
+    if (bestMatch && maxWeight > 0) {
+      return {
+        content: bestMatch.content,
+        suggestions: bestMatch.suggestions
+      };
     }
+
+    // Default Fallback
+    return {
+      content: "I've scanned our neural archives but couldn't find a direct match. Based on your input, here are common topics pilgrims ask about:\n- **Rituals**: Aarti times and Pujas.\n- **Infrastructure**: Washrooms, Parking, and Gates.\n- **History**: The story of Somnath.\n- **Emergency**: Medical and Security help.",
+      suggestions: ["Aarti Timings", "Parking Info", "History"]
+    };
   };
 
   const handleSendQuery = () => {
     if (!query.trim()) return;
-
-    // Add user message
-    setMessages((prev) => [...prev, { type: "user", content: query }]);
-
-    // Simulate AI response based on query
-    const response = getAIResponse(query);
-    setMessages((prev) => [...prev, { type: "ai", content: response }]);
-
+    const userMessage = query;
+    setMessages((prev) => [...prev, { type: "user", content: userMessage, suggestions: [] }]);
     setQuery("");
+    
+    // Simulate AI thinking and response
+    setTimeout(() => {
+      const response = getAIResponse(userMessage);
+      setMessages((prev) => [...prev, { 
+        type: "ai", 
+        content: response.content,
+        suggestions: response.suggestions
+      }]);
+    }, 800);
   };
-
-  const getAIResponse = (userQuery: string) => {
-    const lowerQuery = userQuery.toLowerCase();
-
-    // Facilities and Locations
-    if (
-      lowerQuery.includes("washroom") ||
-      lowerQuery.includes("bathroom") ||
-      lowerQuery.includes("toilet") ||
-      lowerQuery.includes("restroom")
-    ) {
-      return "Clean and well-maintained washrooms are available at multiple locations: East Gate (main entrance), North Gate, South Gate, and near the temple premises. They are accessible 24/7 with separate facilities for men, women, and families. Wheelchair accessible washrooms are also available.";
-    }
-
-    if (
-      lowerQuery.includes("main gate") ||
-      lowerQuery.includes("entrance") ||
-      lowerQuery.includes("enter")
-    ) {
-      return "The main entrance is the East Gate, located on the eastern side facing the Arabian Sea. It features security checks, metal detectors, and separate queues for men and women. The gate opens at 6:00 AM daily.";
-    }
-
-    if (
-      lowerQuery.includes("exit gate") ||
-      lowerQuery.includes("exit") ||
-      lowerQuery.includes("leave")
-    ) {
-      return "Exit gates are available at North Gate and South Gate. The North Gate is the main exit and leads directly to the parking area. All gates have security personnel and are monitored 24/7.";
-    }
-
-    if (
-      lowerQuery.includes("parking") ||
-      lowerQuery.includes("park") ||
-      lowerQuery.includes("vehicle")
-    ) {
-      return "Parking facilities: Two-wheeler parking is free at all gates. Four-wheeler parking costs ₹20-50 per vehicle (₹20 for cars, ₹50 for SUVs/buses). Valet parking available for ₹100. North Gate has the largest parking area with 500+ spaces.";
-    }
-
-    if (lowerQuery.includes("drinking water") || lowerQuery.includes("water")) {
-      return "Free drinking water stations are available throughout the temple premises, including near all gates, main hall, and prayer areas. Bottled water is available at ₹10-20 from temple counters.";
-    }
-
-    if (
-      lowerQuery.includes("lost and found") ||
-      lowerQuery.includes("lost") ||
-      lowerQuery.includes("found")
-    ) {
-      return "Lost and Found counter is located near the East Gate security office. Please report lost items immediately. Common items like phones, wallets, and bags are usually recovered within 24 hours.";
-    }
-
-    // Timings and Schedule
-    if (
-      lowerQuery.includes("timing") ||
-      lowerQuery.includes("time") ||
-      lowerQuery.includes("open") ||
-      lowerQuery.includes("close")
-    ) {
-      return "Temple Timings: Open 6:00 AM to 9:00 PM daily. Aarti Schedule: Mangal Aarti (6:30 AM), Bhog Aarti (12:00 PM), Sandhya Aarti (7:00 PM), Shayan Aarti (9:00 PM). Special darshan during festivals may extend hours.";
-    }
-
-    if (lowerQuery.includes("aarti") || lowerQuery.includes("prayer")) {
-      return "Daily Aarti Schedule: Mangal Aarti (6:30 AM), Bhog Aarti (12:00 PM), Sandhya Aarti (7:00 PM), Shayan Aarti (9:00 PM). Special aartis during festivals. Visitors can participate in evening aarti from 6:30 PM onwards.";
-    }
-
-    if (
-      lowerQuery.includes("darshan") ||
-      lowerQuery.includes("see") ||
-      lowerQuery.includes("view")
-    ) {
-      return "Normal darshan is free and available throughout opening hours. Special darshan tickets cost ₹100-500 (₹100 general, ₹300 VIP, ₹500 VVIP). Online booking available at temple website. Queue time: 30 mins to 2 hours during peak season.";
-    }
-
-    // Food and Prasad
-    if (lowerQuery.includes("prasad") || lowerQuery.includes("prashad")) {
-      return "Free prasad (sweet rice) is distributed at temple counters throughout the day. Special prasad during festivals. Annakoot prasad available during special occasions. All prasad is prepared in hygienic conditions following traditional methods.";
-    }
-
-    if (
-      lowerQuery.includes("food") ||
-      lowerQuery.includes("eat") ||
-      lowerQuery.includes("restaurant")
-    ) {
-      return "Temple premises have vegetarian food stalls serving Gujarati thali (₹80-150), snacks, and beverages. Jain food options available. Nearby restaurants: Bhagat Tarachand (famous for dal bati), other local eateries within 500m. All food is vegetarian and hygienic.";
-    }
-
-    if (lowerQuery.includes("jain") || lowerQuery.includes("jain food")) {
-      return "Jain food stalls are available within temple premises, serving pure Jain vegetarian meals without onion, garlic, or root vegetables. Jain prasad and snacks available at designated counters.";
-    }
-
-    // History and Information
-    if (
-      lowerQuery.includes("history") ||
-      lowerQuery.includes("story") ||
-      lowerQuery.includes("about")
-    ) {
-      return "Somnath Temple is one of the 12 Jyotirlingas, dedicated to Lord Shiva. The temple has been destroyed and rebuilt 17 times. Current structure built in 1951 by Sardar Vallabhbhai Patel. The temple houses one of the 12 sacred Shiva lingams.";
-    }
-
-    if (
-      lowerQuery.includes("architecture") ||
-      lowerQuery.includes("design") ||
-      lowerQuery.includes("building")
-    ) {
-      return "The temple follows Chalukya style architecture with intricate carvings. Main features: 7-storey structure, 108 pillars, beautiful sculptures, and a 6.5 ft Shiva lingam. The temple complex spans 5 acres with beautiful gardens.";
-    }
-
-    if (
-      lowerQuery.includes("significance") ||
-      lowerQuery.includes("importance") ||
-      lowerQuery.includes("sacred")
-    ) {
-      return "Somnath is the first among the 12 Jyotirlingas. It's believed that Lord Shiva appeared as a divine light (Jyotirlingam) here. The temple represents the victory of good over evil and has immense spiritual significance.";
-    }
-
-    // Special Services and Accessibility
-    if (
-      lowerQuery.includes("wheelchair") ||
-      lowerQuery.includes("disabled") ||
-      lowerQuery.includes("handicap")
-    ) {
-      return "Wheelchair accessible ramps available at all gates. Wheelchair rental available at ₹50/day. Special darshan queues for elderly and disabled. Braille signage available. Assistance personnel available 24/7.";
-    }
-
-    if (
-      lowerQuery.includes("guide") ||
-      lowerQuery.includes("tour") ||
-      lowerQuery.includes("audio")
-    ) {
-      return "Audio guides available in Hindi, English, Gujarati for ₹50. Temple guides available for ₹200-500 for group tours. Self-guided information boards in multiple languages throughout the premises.";
-    }
-
-    if (
-      lowerQuery.includes("photography") ||
-      lowerQuery.includes("camera") ||
-      lowerQuery.includes("photo")
-    ) {
-      return "Photography allowed in outer areas. No photography inside main sanctum. Professional photography services available. Drone photography not permitted. Tripods allowed with permission.";
-    }
-
-    if (
-      lowerQuery.includes("dress") ||
-      lowerQuery.includes("clothing") ||
-      lowerQuery.includes("wear")
-    ) {
-      return "Modest clothing required. Men: Full pants, covered shoulders. Women: Salwar kameez, saree, or long kurti with leggings. Scarves available for covering head. No shorts, sleeveless tops, or revealing clothing.";
-    }
-    if (
-      lowerQuery.includes("donation") ||
-      lowerQuery.includes("contribute") ||
-      lowerQuery.includes("offer")
-    ) {
-      return "Donation boxes available throughout temple. Hundi (donation box) in main hall. Online donations accepted. All donations go towards temple maintenance and charitable activities.";
-    }
-
-    if (
-      lowerQuery.includes("crowd") ||
-      lowerQuery.includes("bheed") ||
-      lowerQuery.includes("crowded")
-    ) {
-      return "Somnath Temple typically witnesses 25,000–30,000 visitors per day, based on annual footfall data of around 9.8 million pilgrims. Crowd levels rise significantly during festivals and peak seasons, often exceeding 50,000 daily..";
-    }
-
-    // Festivals and Events
-    if (
-      lowerQuery.includes("festival") ||
-      lowerQuery.includes("celebration") ||
-      lowerQuery.includes("event")
-    ) {
-      return "Major festivals: Maha Shivaratri (Feb-March), Shravan month celebrations, Kartik Purnima. Special events during Navratri, Diwali. Temple decorated beautifully during festivals with extended hours.";
-    }
-
-    if (lowerQuery.includes("special day") || lowerQuery.includes("occasion")) {
-      return "Special occasions: Monday (special significance for Shiva devotees), Purnima days, Hindu festivals. Special pujas and ceremonies conducted. Increased crowd expected during these days.";
-    }
-
-    // Transportation and Nearby
-    if (
-      lowerQuery.includes("how to reach") ||
-      lowerQuery.includes("transport") ||
-      lowerQuery.includes("bus") ||
-      lowerQuery.includes("train")
-    ) {
-      return "By Road: 5km from Somnath Railway Station, 7km from Veraval. Regular buses from Ahmedabad, Rajkot, Surat. By Train: Somnath Express, Saurashtra Express. By Air: Nearest airport is Diu (80km) or Rajkot (200km).";
-    }
-
-    if (
-      lowerQuery.includes("nearby") ||
-      lowerQuery.includes("around") ||
-      lowerQuery.includes("attraction")
-    ) {
-      return "Nearby attractions: Somnath Beach (2km), Triveni Ghat (3km), Junagadh (100km), Diu (80km). Shopping: Local markets for handicrafts, religious items. Stay options: Hotels from ₹500-5000, guesthouses available.";
-    }
-
-    if (
-      lowerQuery.includes("accommodation") ||
-      lowerQuery.includes("hotel") ||
-      lowerQuery.includes("stay")
-    ) {
-      return "Hotels: From budget (₹500-1500) to luxury (₹3000-5000). Recommended: Somnath Beach Resort, Lord Somnath Hotel, Temple View Hotel. Advance booking recommended during festivals. Dormitory facilities available for pilgrims.";
-    }
-
-    // Emergency and Safety
-    if (
-      lowerQuery.includes("emergency") ||
-      lowerQuery.includes("medical") ||
-      lowerQuery.includes("doctor") ||
-      lowerQuery.includes("hospital")
-    ) {
-      return "Medical center within temple premises (24/7). Nearest hospital: Somnath General Hospital (2km). Ambulance service available. First aid stations at all gates. Emergency contact: Temple security (+91-2876-231234).";
-    }
-
-    if (lowerQuery.includes("safety") || lowerQuery.includes("security")) {
-      return "High security with CCTV cameras, metal detectors, and trained personnel. Separate queues for men/women. Child protection measures in place. Emergency evacuation plans available. Safe for all visitors.";
-    }
-
-    // General Questions
-    if (
-      lowerQuery.includes("best time") ||
-      lowerQuery.includes("when to visit") ||
-      lowerQuery.includes("season")
-    ) {
-      return "Best time: October to March (pleasant weather). Avoid April-June (hot), July-September (monsoon). Festivals make visits special but crowded. Early morning or evening visits recommended for peaceful darshan.";
-    }
-
-    if (
-      lowerQuery.includes("cost") ||
-      lowerQuery.includes("fee") ||
-      lowerQuery.includes("price") ||
-      lowerQuery.includes("ticket")
-    ) {
-      return "Entry: Free for all. Special darshan: ₹100-500. Parking: ₹20-50. Audio guide: ₹50. Photography permit: ₹100. Food: ₹50-200. Total budget: ₹200-1000 per person for a comfortable visit.";
-    }
-
-    if (
-      lowerQuery.includes("children") ||
-      lowerQuery.includes("kid") ||
-      lowerQuery.includes("family")
-    ) {
-      return "Family-friendly temple with special queues for children. Kids under 5 free entry. Baby care facilities available. Interactive displays for children. Pram rental available. Safe and welcoming environment.";
-    }
-
-    // Fallback responses
-    if (
-      lowerQuery.includes("hello") ||
-      lowerQuery.includes("hi") ||
-      lowerQuery.includes("namaste")
-    ) {
-      return "Namaste! Welcome to Somnath Temple. I'm your AI assistant. I can help you with information about temple timings, locations, facilities, history, and everything you need for a wonderful pilgrimage experience. What would you like to know?";
-    }
-
-    if (lowerQuery.includes("thank") || lowerQuery.includes("thanks")) {
-      return "You're welcome! May Lord Shiva bless you with peace and prosperity. Have a wonderful visit to Somnath Temple. Jai Somnath! 🙏";
-    }
-
-    // Default response for unrecognized queries
-    return "I understand you're asking about Somnath Temple. While I have extensive information about temple facilities, timings, history, and visitor services, could you please rephrase your question or ask about specific aspects like locations, timings, food, parking, or history? I'm here to provide detailed and accurate information to make your visit memorable!";
-  };
-
-  const quickQueries = [
-    "Where is the washroom?",
-    "Temple timings?",
-    "Parking location?",
-    "How to reach the main gate?",
-  ];
 
   return (
-    <section
-      id="ai-assistance"
-      className="py-24 bg-gradient-to-br from-blue-50 via-background to-cyan-50 dark:from-blue-950/20 dark:via-background dark:to-cyan-950/20"
-    >
-      <div className="container mx-auto px-4">
-        <div className="text-center max-w-3xl mx-auto mb-16 animate-fade-in">
-          <Badge className="mb-4 bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900 dark:text-blue-300">
-            <Bot className="w-3 h-3 mr-1" />
-            AI-Powered Assistant
-          </Badge>
-          <h1 className="text-4xl  bg-gradient-spiritual bg-clip-text text-transparent md:text-5xl font-bold mb-4">
-            Temple AI Assistant
-          </h1>
-          <p className="text-xl text-muted-foreground font-serif">
-            Get instant answers about{" "}
-            <span className="bg-gradient-warm bg-clip-text text-transparent">
-              Somnath Temple
-            </span>{" "}
-            and other sacred sites in Gujarat. Ask about locations, timings,
-            facilities, and everything you need to know.
-          </p>
-        </div>
+    <section id="ai-assistance" className="h-full w-full flex flex-col pt-10">
+      <div className="container mx-auto px-4 lg:px-20">
+        <div className="flex flex-col lg:flex-row gap-12 h-[calc(100vh-200px)]">
+          
+          {/* Left: Chat Interface */}
+          <div className="flex-1 flex flex-col h-full">
+            <div className="mb-8 animate-in fade-in slide-in-from-left-5 duration-700">
+              <Badge className="mb-4 bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 transition-colors uppercase tracking-[0.2em] font-black text-[10px] px-4 py-1.5">
+                <Sparkles className="w-3 h-3 mr-2" />
+                Neural Assistant Active
+              </Badge>
+              <h2 className="text-5xl font-black text-white tracking-tighter mb-4 leading-none">
+                TEMPLE <span className="text-primary italic">CONCIERGE</span>
+              </h2>
+              <p className="text-white/40 font-medium uppercase tracking-widest text-xs">
+                Real-time predictive support for your sacred journey
+              </p>
+            </div>
 
-        <div className="max-w-4xl mx-auto">
-          <Card className="shadow-2xl border-0 bg-card/95 backdrop-blur">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MessageCircle className="w-6 h-6 text-primary" />
-                Chat with Temple AI
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Chat Messages */}
-              <div className="h-96 overflow-y-auto space-y-4 p-4 bg-muted/30 rounded-lg">
-                {messages.map((msg, index) => (
-                  <div
-                    key={index}
-                    className={`flex ${
-                      msg.type === "user" ? "justify-end" : "justify-start"
-                    }`}
-                  >
-                    <div
-                      className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                        msg.type === "user"
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted"
-                      }`}
+            <div className="flex-1 glass-panel rounded-[3rem] border-white/5 flex flex-col overflow-hidden shadow-2xl relative group">
+              <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
+              
+              {/* Chat Area */}
+              <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-hide relative z-10">
+                {messages.map((msg: any, i) => (
+                  <div key={i} className={cn("flex w-full animate-in fade-in slide-in-from-bottom-2 duration-500", msg.type === "user" ? "justify-end" : "justify-start")}>
+                    <div className={cn(
+                      "max-w-[80%] p-6 rounded-3xl text-sm font-medium leading-relaxed shadow-xl",
+                      msg.type === "user" 
+                        ? "bg-primary text-white rounded-tr-none border border-white/10" 
+                        : "bg-white/5 backdrop-blur-3xl text-white/90 rounded-tl-none border border-white/5"
+                    )}>
+                      <div className="whitespace-pre-line">{msg.content}</div>
+                      {msg.type === "ai" && msg.suggestions && msg.suggestions.length > 0 && (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {msg.suggestions.map((suggestion: string, sIdx: number) => (
+                            <button 
+                              key={sIdx}
+                              onClick={() => {
+                                setQuery(suggestion);
+                                // Optional: Auto-send if desired, but letting user edit is safer
+                              }}
+                              className="px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-black uppercase text-primary hover:bg-primary hover:text-white transition-all"
+                            >
+                              {suggestion}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <div ref={chatEndRef} />
+              </div>
+
+              {/* Input Area */}
+              <div className="p-8 pt-4 border-t border-white/5 relative z-10 bg-black/40 backdrop-blur-xl">
+                <div className="flex gap-4 p-2 bg-white/5 rounded-3xl border border-white/10 focus-within:border-primary/40 transition-all shadow-inner">
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Ask about live crowd, timings, or sacred history..."
+                    onKeyPress={(e) => e.key === "Enter" && handleSendQuery()}
+                    className="flex-1 bg-transparent px-4 py-2 text-sm text-white placeholder:text-white/20 outline-none"
+                  />
+                  <div className="flex gap-2 pr-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="rounded-2xl hover:bg-white/10 text-white/40 hover:text-white"
                     >
-                      {msg.content}
+                      <Mic className="w-5 h-5" />
+                    </Button>
+                    <Button 
+                      onClick={handleSendQuery}
+                      size="icon"
+                      className="rounded-2xl bg-primary hover:bg-orange-600 shadow-lg shadow-primary/20"
+                    >
+                      <Send className="w-5 h-5" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Proactive Insights Sidebar */}
+          <div className="w-full lg:w-96 flex flex-col gap-8 pt-12 animate-in fade-in slide-in-from-right-10 duration-1000">
+            <div className="space-y-6">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-white/30 px-2 flex items-center gap-2">
+                <TrendingUp className="w-3 h-3 text-primary" /> Proactive Insights
+              </h3>
+              
+              <div className="grid gap-4">
+                {insights.map((insight, i) => (
+                  <div key={i} className="p-6 rounded-[2.5rem] bg-white/5 border border-white/5 hover:bg-white/[0.08] transition-all group scale-100 hover:scale-[1.02] cursor-default">
+                    <div className="flex items-start gap-4">
+                      <div className="w-10 h-10 rounded-2xl bg-white/5 flex items-center justify-center shrink-0 border border-white/5 group-hover:border-primary/20 transition-all">
+                        <insight.icon className={cn("w-5 h-5", insight.color)} />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white mb-1 group-hover:text-primary transition-colors">{insight.title}</h4>
+                        <p className="text-xs text-white/40 leading-relaxed font-medium">
+                          {insight.desc}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
+            </div>
 
-              {/* Quick Query Buttons */}
-              <div className="flex flex-wrap gap-2">
-                {quickQueries.map((q, index) => (
-                  <Button
-                    key={index}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setQuery(q)}
-                    className="text-xs"
-                  >
-                    {q}
-                  </Button>
-                ))}
+            <div className="p-8 rounded-[3rem] bg-gradient-to-br from-primary/20 to-transparent border border-primary/10 relative overflow-hidden group">
+              <div className="absolute -right-4 -top-4 opacity-5 group-hover:scale-110 transition-transform duration-700">
+                <Bot className="w-32 h-32 text-primary" />
               </div>
-
-              {/* Input Area */}
-              <div className="flex gap-2">
-                <Input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Ask about temple locations, timings, facilities..."
-                  onKeyPress={(e) => e.key === "Enter" && handleSendQuery()}
-                  className="flex-1"
-                />
-                {isSupported && (
-                  <Button
-                    onClick={isListening ? stopListening : startListening}
-                    size="icon"
-                    variant={isListening ? "destructive" : "outline"}
-                    className={isListening ? "animate-pulse" : ""}
-                  >
-                    {isListening ? (
-                      <MicOff className="w-4 h-4" />
-                    ) : (
-                      <Mic className="w-4 h-4" />
-                    )}
-                  </Button>
-                )}
-                <Button onClick={handleSendQuery} size="icon">
-                  <Send className="w-4 h-4" />
-                </Button>
+              <div className="relative z-10">
+                <h4 className="text-sm font-black text-white uppercase tracking-widest mb-3">AI Capacity Hub</h4>
+                <p className="text-xs text-white/50 leading-relaxed font-medium mb-6">
+                  Processing 4.2M data points per second across 12 sacred sites.
+                </p>
+                <button className="flex items-center gap-2 text-[10px] font-black uppercase text-primary tracking-widest group-hover:gap-3 transition-all">
+                  Export Dataset <ArrowRight className="w-3 h-3" />
+                </button>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Additional Info Cards */}
-          <div className="grid md:grid-cols-3 gap-6 mt-8">
-            <Card className="text-center p-6">
-              <MapPin className="w-8 h-8 text-primary mx-auto mb-2" />
-              <h3 className="font-semibold mb-2">Location Guide</h3>
-              <p className="text-sm text-muted-foreground">
-                Find washrooms, gates, parking, and all facilities
-              </p>
-            </Card>
-            <Card className="text-center p-6">
-              <Clock className="w-8 h-8 text-accent mx-auto mb-2" />
-              <h3 className="font-semibold mb-2">Timings & Events</h3>
-              <p className="text-sm text-muted-foreground">
-                Temple hours, aarti times, and festival schedules
-              </p>
-            </Card>
-            <Card className="text-center p-6">
-              <Info className="w-8 h-8 text-success mx-auto mb-2" />
-              <h3 className="font-semibold mb-2">Temple Info</h3>
-              <p className="text-sm text-muted-foreground">
-                History, rituals, prasad, and visitor guidelines
-              </p>
-            </Card>
+            </div>
           </div>
+          
         </div>
       </div>
     </section>
