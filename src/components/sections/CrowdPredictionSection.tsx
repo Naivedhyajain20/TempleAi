@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import {
-  Activity,
+  BarChart3,
   Upload,
-  Zap,
+  AlertCircle,
   Target,
   Users,
   AlertTriangle,
@@ -11,10 +11,10 @@ import {
   Search,
   Shield,
   Camera,
-  Layers,
-  Thermometer,
-  Expand,
   Info,
+  CheckCircle2,
+  TrendingUp,
+  Zap,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,29 +28,27 @@ interface Detection {
   source?: string;
 }
 
-const CrowdPredictionSection = () => {
-  const [imgPreview, setImgPreview] = useState<string | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
-  const [isModelLoading, setIsModelLoading] = useState(true);
-  const [showAnalysis, setShowAnalysis] = useState(false);
-  const [isLive, setIsLive] = useState(false);
-  const [debugLevel, setDebugLevel] = useState<
-    "Off" | "Raw" | "Merged" | "Final"
-  >("Off");
+const CrowdDensityAnalyzer = () => {
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isEngineReady, setIsEngineReady] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [detailLevel, setDetailLevel] = useState<
+    "Summary" | "Detailed" | "Technical"
+  >("Summary");
 
-  const [analysisData, setAnalysisData] = useState({
-    count: 0,
+  const [analysisResults, setAnalysisResults] = useState({
+    totalCount: 0,
     confidence: 0,
     density: "Low" as "Low" | "Medium" | "High",
-    risk: "Safe" as "Safe" | "Moderate" | "High Risk",
-    rawDetections: [] as Detection[],
-    mergedDetections: [] as Detection[],
-    finalDetections: [] as Detection[],
-    inferenceMode: "YOLO" as "YOLO" | "DENSITY",
-    accuracyType: "Detected Count" as
-      | "Detected Count"
-      | "Estimated Count (Density Model)",
-    error: null as string | null,
+    riskLevel: "Safe" as "Safe" | "Moderate" | "High",
+    detectedObjects: [] as Detection[],
+    mergedObjects: [] as Detection[],
+    finalObjects: [] as Detection[],
+    analysisMode: "Real-time" as "Real-time" | "Statistical",
+    countType: "Direct Count" as "Direct Count" | "Estimated Count",
+    errorMessage: null as string | null,
   });
 
   const modelRef = useRef<any>(null);
@@ -59,10 +57,10 @@ const CrowdPredictionSection = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const loadModel = async () => {
+  const initializeEngine = async () => {
     try {
-      setIsModelLoading(true);
-      setAnalysisData((prev) => ({ ...prev, error: null }));
+      setIsEngineReady(false);
+      setAnalysisResults((prev) => ({ ...prev, errorMessage: null }));
 
       const [tf, cocoSsd] = await Promise.all([
         import("@tensorflow/tfjs"),
@@ -79,25 +77,28 @@ const CrowdPredictionSection = () => {
       const model = await cocoSsd.load({ base: "mobilenet_v2" });
       if (!isMountedRef.current) return;
       modelRef.current = model;
-      setIsModelLoading(false);
-      console.log("Stable Hybrid Crowd Engine Online");
+      setIsEngineReady(true);
+      console.log("Crowd Detection Engine initialized successfully");
     } catch (err) {
       if (!isMountedRef.current) return;
-      setIsModelLoading(false);
-      setAnalysisData((prev) => ({ ...prev, error: "Model Load Error" }));
-      toast.error("Model failed to load. Please retry.");
+      setIsEngineReady(false);
+      setAnalysisResults((prev) => ({
+        ...prev,
+        errorMessage: "Engine Load Error",
+      }));
+      toast.error("Unable to load detection engine. Please try refreshing.");
     }
   };
 
   useEffect(() => {
     isMountedRef.current = true;
-    loadModel();
+    initializeEngine();
     return () => {
       isMountedRef.current = false;
     };
   }, []);
 
-  const calculateIOU = (bbox1: number[], bbox2: number[]) => {
+  const calculateBoxOverlap = (bbox1: number[], bbox2: number[]) => {
     const [x1, y1, w1, h1] = bbox1;
     const [x2, y2, w2, h2] = bbox2;
     const x_overlap = Math.max(
@@ -115,7 +116,10 @@ const CrowdPredictionSection = () => {
     return union > 0 ? overlap_area / union : 0;
   };
 
-  const applyNMS = (detections: Detection[], iouThreshold = 0.45) => {
+  const removeRedundantBoxes = (
+    detections: Detection[],
+    overlapThreshold = 0.45,
+  ) => {
     const sorted = [...detections].sort((a, b) => b.score - a.score);
     const selected: Detection[] = [];
     const active = new Array(sorted.length).fill(true);
@@ -125,9 +129,8 @@ const CrowdPredictionSection = () => {
         selected.push(sorted[i]);
         for (let j = i + 1; j < sorted.length; j++) {
           if (active[j]) {
-            const iou = calculateIOU(sorted[i].bbox, sorted[j].bbox);
-            // If IoU > threshold → keep only highest confidence box (this one)
-            if (iou > iouThreshold) active[j] = false;
+            const overlap = calculateBoxOverlap(sorted[i].bbox, sorted[j].bbox);
+            if (overlap > overlapThreshold) active[j] = false;
           }
         }
       }
@@ -135,7 +138,7 @@ const CrowdPredictionSection = () => {
     return selected;
   };
 
-  const normalizeBBox = (
+  const normalizeBox = (
     bbox: [number, number, number, number],
     width: number,
     height: number,
@@ -148,14 +151,14 @@ const CrowdPredictionSection = () => {
     return [nx, ny, nw, nh];
   };
 
-  const detectPersons = async (
+  const detectPeople = async (
     model: any,
-    target: HTMLCanvasElement,
+    canvas: HTMLCanvasElement,
     source: string,
-    minScore = 0.25,
+    minConfidence = 0.25,
   ) => {
-    const raw = await model.detect(target, 100, minScore);
-    return raw
+    const detections = await model.detect(canvas, 100, minConfidence);
+    return detections
       .filter((d: any) => d.class === "person")
       .map((d: any) => ({
         ...d,
@@ -163,7 +166,7 @@ const CrowdPredictionSection = () => {
       })) as Detection[];
   };
 
-  const weightedBoxFusion = (detections: Detection[], iouThreshold = 0.55) => {
+  const fuseDetections = (detections: Detection[], overlapThreshold = 0.55) => {
     if (!detections.length) return [];
 
     const sorted = [...detections].sort((a, b) => b.score - a.score);
@@ -171,13 +174,13 @@ const CrowdPredictionSection = () => {
 
     for (const detection of sorted) {
       let targetCluster: Detection[] | null = null;
-      let bestIou = 0;
+      let bestOverlap = 0;
 
       for (const cluster of clusters) {
         const clusterHead = cluster[0];
-        const iou = calculateIOU(clusterHead.bbox, detection.bbox);
-        if (iou > iouThreshold && iou > bestIou) {
-          bestIou = iou;
+        const overlap = calculateBoxOverlap(clusterHead.bbox, detection.bbox);
+        if (overlap > overlapThreshold && overlap > bestOverlap) {
+          bestOverlap = overlap;
           targetCluster = cluster;
         }
       }
@@ -190,7 +193,7 @@ const CrowdPredictionSection = () => {
     }
 
     return clusters.map((cluster) => {
-      const weightSum = cluster.reduce((acc, d) => acc + d.score, 0) || 1;
+      const totalScore = cluster.reduce((acc, d) => acc + d.score, 0) || 1;
       const fusedBox: [number, number, number, number] = [0, 0, 0, 0];
 
       cluster.forEach((d) => {
@@ -200,24 +203,24 @@ const CrowdPredictionSection = () => {
         fusedBox[3] += d.bbox[3] * d.score;
       });
 
-      fusedBox[0] /= weightSum;
-      fusedBox[1] /= weightSum;
-      fusedBox[2] /= weightSum;
-      fusedBox[3] /= weightSum;
+      fusedBox[0] /= totalScore;
+      fusedBox[1] /= totalScore;
+      fusedBox[2] /= totalScore;
+      fusedBox[3] /= totalScore;
 
       const maxScore = Math.max(...cluster.map((d) => d.score));
-      const consensusBoost = Math.min(0.12, (cluster.length - 1) * 0.03);
+      const strengthBoost = Math.min(0.12, (cluster.length - 1) * 0.03);
 
       return {
         bbox: fusedBox,
         class: "person",
-        score: Math.min(0.98, maxScore + consensusBoost),
-        source: "Fused",
+        score: Math.min(0.98, maxScore + strengthBoost),
+        source: "Merged",
       } as Detection;
     });
   };
 
-  const getIntersectionArea = (a: number[], b: number[]) => {
+  const calculateIntersection = (a: number[], b: number[]) => {
     const [ax, ay, aw, ah] = a;
     const [bx, by, bw, bh] = b;
     const ix = Math.max(0, Math.min(ax + aw, bx + bw) - Math.max(ax, bx));
@@ -225,16 +228,13 @@ const CrowdPredictionSection = () => {
     return ix * iy;
   };
 
-  const applyContainmentSuppression = (
-    detections: Detection[],
-    threshold = 0.72,
-  ) => {
+  const filterContainedBoxes = (detections: Detection[], threshold = 0.72) => {
     const sorted = [...detections].sort((a, b) => b.score - a.score);
     const kept: Detection[] = [];
 
     for (const candidate of sorted) {
-      const suppress = kept.some((picked) => {
-        const overlapArea = getIntersectionArea(candidate.bbox, picked.bbox);
+      const shouldRemove = kept.some((picked) => {
+        const overlapArea = calculateIntersection(candidate.bbox, picked.bbox);
         const candidateArea = candidate.bbox[2] * candidate.bbox[3];
         const pickedArea = picked.bbox[2] * picked.bbox[3];
         const smallerArea = Math.max(1, Math.min(candidateArea, pickedArea));
@@ -242,13 +242,13 @@ const CrowdPredictionSection = () => {
         return containment > threshold;
       });
 
-      if (!suppress) kept.push(candidate);
+      if (!shouldRemove) kept.push(candidate);
     }
 
     return kept;
   };
 
-  const applyCenterDistanceDedup = (
+  const deduplicateByCenter = (
     detections: Detection[],
     centerThreshold = 0.18,
   ) => {
@@ -261,32 +261,33 @@ const CrowdPredictionSection = () => {
       const cy = y + h / 2;
       const diagonal = Math.sqrt(w * w + h * h);
 
-      const hasNearCenter = selected.some((s) => {
+      const hasNearDuplicate = selected.some((s) => {
         const [sx, sy, sw, sh] = s.bbox;
         const scx = sx + sw / 2;
         const scy = sy + sh / 2;
-        const dist = Math.hypot(cx - scx, cy - scy);
-        const norm =
-          dist / Math.max(1, Math.min(diagonal, Math.sqrt(sw * sw + sh * sh)));
-        return norm < centerThreshold;
+        const distance = Math.hypot(cx - scx, cy - scy);
+        const normalizedDist =
+          distance /
+          Math.max(1, Math.min(diagonal, Math.sqrt(sw * sw + sh * sh)));
+        return normalizedDist < centerThreshold;
       });
 
-      if (!hasNearCenter) selected.push(d);
+      if (!hasNearDuplicate) selected.push(d);
     }
 
     return selected;
   };
 
-  const runInference = async (
+  const analyzeImage = async (
     imageElement: HTMLImageElement | HTMLVideoElement,
   ) => {
     if (!modelRef.current) {
-      toast.error("Model is not ready yet");
+      toast.error("Detection engine is not ready");
       return;
     }
     if (!canvasRef.current) return;
-    setIsScanning(true);
-    setShowAnalysis(false);
+    setIsAnalyzing(true);
+    setShowResults(false);
 
     try {
       const canvas = canvasRef.current;
@@ -303,34 +304,34 @@ const CrowdPredictionSection = () => {
           : imageElement.naturalHeight || imageElement.height;
       if (!w || !h) {
         toast.error("Invalid image source");
-        setIsScanning(false);
+        setIsAnalyzing(false);
         return;
       }
 
-      // Resize internally to optimal resolution (640px width)
-      const scale = 640 / w;
+      // Multi-pass detection strategy
+      const detectionScale = 640 / w;
       canvas.width = 640;
-      canvas.height = h * scale;
+      canvas.height = h * detectionScale;
       ctx.drawImage(imageElement, 0, 0, canvas.width, canvas.height);
 
-      // Stage A: Global pass first, then choose sparse/dense strategy.
-      const baseGlobal = await detectPersons(
+      // First pass: Base detection
+      const baseDetections = await detectPeople(
         modelRef.current,
         canvas,
-        "Global",
+        "Primary",
         0.3,
       );
-      const masterRaw: Detection[] = [...baseGlobal];
-      const denseScene = baseGlobal.length >= 10;
+      const allDetections: Detection[] = [...baseDetections];
+      const isDenseScene = baseDetections.length >= 10;
 
-      // Stage B: Hi-res pass only for dense scenes.
-      if (denseScene) {
-        const hiResWidth = 896;
-        const hiScale = hiResWidth / w;
+      // Second pass: High-resolution for dense scenes
+      if (isDenseScene) {
+        const highResWidth = 896;
+        const highResScale = highResWidth / w;
         const hiResCanvas = document.createElement("canvas");
         const hiResCtx = hiResCanvas.getContext("2d");
-        hiResCanvas.width = hiResWidth;
-        hiResCanvas.height = Math.round(h * hiScale);
+        hiResCanvas.width = highResWidth;
+        hiResCanvas.height = Math.round(h * highResScale);
         hiResCtx?.drawImage(
           imageElement,
           0,
@@ -339,54 +340,54 @@ const CrowdPredictionSection = () => {
           hiResCanvas.height,
         );
 
-        const hiResRaw = await detectPersons(
+        const hiResDetections = await detectPeople(
           modelRef.current,
           hiResCanvas,
-          "Global-HiRes",
+          "Secondary",
           0.28,
         );
-        const backScale = canvas.width / hiResCanvas.width;
-        hiResRaw.forEach((d) => {
-          masterRaw.push({
+        const rescaleRatio = canvas.width / hiResCanvas.width;
+        hiResDetections.forEach((d) => {
+          allDetections.push({
             ...d,
             bbox: [
-              d.bbox[0] * backScale,
-              d.bbox[1] * backScale,
-              d.bbox[2] * backScale,
-              d.bbox[3] * backScale,
+              d.bbox[0] * rescaleRatio,
+              d.bbox[1] * rescaleRatio,
+              d.bbox[2] * rescaleRatio,
+              d.bbox[3] * rescaleRatio,
             ],
           });
         });
       }
 
-      // Stage C: tile strategy adapts by scene density.
-      const cols = denseScene ? 3 : 2;
-      const rows = denseScene ? 3 : 2;
-      const overlapRatio = denseScene ? 0.2 : 0.05;
-      const tileW = Math.round(
-        canvas.width / (1 + (cols - 1) * (1 - overlapRatio)),
+      // Third pass: Tiled detection for better coverage
+      const gridCols = isDenseScene ? 3 : 2;
+      const gridRows = isDenseScene ? 3 : 2;
+      const overlapPercent = isDenseScene ? 0.2 : 0.05;
+      const tileWidth = Math.round(
+        canvas.width / (1 + (gridCols - 1) * (1 - overlapPercent)),
       );
-      const tileH = Math.round(
-        canvas.height / (1 + (rows - 1) * (1 - overlapRatio)),
+      const tileHeight = Math.round(
+        canvas.height / (1 + (gridRows - 1) * (1 - overlapPercent)),
       );
-      const strideX = Math.max(1, Math.round(tileW * (1 - overlapRatio)));
-      const strideY = Math.max(1, Math.round(tileH * (1 - overlapRatio)));
+      const stepX = Math.max(1, Math.round(tileWidth * (1 - overlapPercent)));
+      const stepY = Math.max(1, Math.round(tileHeight * (1 - overlapPercent)));
 
       const tiles: Array<{ x: number; y: number; w: number; h: number }> = [];
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const tx = Math.min(c * strideX, canvas.width - tileW);
-          const ty = Math.min(r * strideY, canvas.height - tileH);
-          tiles.push({ x: tx, y: ty, w: tileW, h: tileH });
+      for (let r = 0; r < gridRows; r++) {
+        for (let c = 0; c < gridCols; c++) {
+          const tileX = Math.min(c * stepX, canvas.width - tileWidth);
+          const tileY = Math.min(r * stepY, canvas.height - tileHeight);
+          tiles.push({ x: tileX, y: tileY, w: tileWidth, h: tileHeight });
         }
       }
 
-      const offCanvas = document.createElement("canvas");
-      const offCtx = offCanvas.getContext("2d");
+      const tempCanvas = document.createElement("canvas");
+      const tempCtx = tempCanvas.getContext("2d");
       for (const tile of tiles) {
-        offCanvas.width = tile.w;
-        offCanvas.height = tile.h;
-        offCtx?.drawImage(
+        tempCanvas.width = tile.w;
+        tempCanvas.height = tile.h;
+        tempCtx?.drawImage(
           canvas,
           tile.x,
           tile.y,
@@ -398,14 +399,14 @@ const CrowdPredictionSection = () => {
           tile.h,
         );
 
-        const tileRaw = await detectPersons(
+        const tileDetections = await detectPeople(
           modelRef.current,
-          offCanvas,
+          tempCanvas,
           "Tile",
-          denseScene ? 0.26 : 0.36,
+          isDenseScene ? 0.26 : 0.36,
         );
-        tileRaw.forEach((d) => {
-          masterRaw.push({
+        tileDetections.forEach((d) => {
+          allDetections.push({
             ...d,
             bbox: [
               d.bbox[0] + tile.x,
@@ -417,182 +418,179 @@ const CrowdPredictionSection = () => {
         });
       }
 
-      // Step 1: normalize boxes before merge
-      const normalizedRaw = masterRaw
+      // Post-processing: Cleanup and consolidation
+      const normalizedDetections = allDetections
         .map((d) => ({
           ...d,
-          bbox: normalizeBBox(d.bbox, canvas.width, canvas.height),
+          bbox: normalizeBox(d.bbox, canvas.width, canvas.height),
         }))
         .filter((d) => d.bbox[2] > 0 && d.bbox[3] > 0);
 
-      // Step 2: merge duplicate boxes with WBF + multi-step dedup.
-      const fusedDetections = weightedBoxFusion(normalizedRaw, 0.55);
-      const nmsDetections = applyNMS(fusedDetections, denseScene ? 0.5 : 0.45);
-      const containmentDetections = applyContainmentSuppression(
-        nmsDetections,
-        denseScene ? 0.76 : 0.68,
+      // Apply fusion and filtering
+      const fusedDetections = fuseDetections(normalizedDetections, 0.55);
+      const cleanedDetections = removeRedundantBoxes(
+        fusedDetections,
+        isDenseScene ? 0.5 : 0.45,
       );
-      const mergedPassed = applyCenterDistanceDedup(
-        containmentDetections,
-        denseScene ? 0.16 : 0.2,
+      const filteredDetections = filterContainedBoxes(
+        cleanedDetections,
+        isDenseScene ? 0.76 : 0.68,
+      );
+      const finalDetections = deduplicateByCenter(
+        filteredDetections,
+        isDenseScene ? 0.16 : 0.2,
       );
 
-      // 2. FALSE POSITIVE FILTERING
-      const finalDetections = mergedPassed.filter((d) => {
+      // Final validation filtering
+      const validatedDetections = finalDetections.filter((d) => {
         const [x, y, bw, bh] = d.bbox;
-        const aspect = bw / bh;
-        const areaRatio = (bw * bh) / (canvas.width * canvas.height);
-        const touchesEdge =
+        const aspectRatio = bw / bh;
+        const areaPercent = (bw * bh) / (canvas.width * canvas.height);
+        const nearEdge =
           x <= 1 ||
           y <= 1 ||
           x + bw >= canvas.width - 1 ||
           y + bh >= canvas.height - 1;
 
-        const scorePass = touchesEdge
-          ? d.score >= (denseScene ? 0.5 : 0.58)
-          : d.score >= (denseScene ? 0.35 : 0.45);
-        const areaPass =
-          areaRatio > (denseScene ? 0.00045 : 0.00075) ||
-          (d.score >= 0.68 && areaRatio > 0.0003) ||
-          (d.score >= 0.82 && areaRatio > 0.00022);
+        const confidenceOk = nearEdge
+          ? d.score >= (isDenseScene ? 0.5 : 0.58)
+          : d.score >= (isDenseScene ? 0.35 : 0.45);
+        const sizeOk =
+          areaPercent > (isDenseScene ? 0.00045 : 0.00075) ||
+          (d.score >= 0.68 && areaPercent > 0.0003) ||
+          (d.score >= 0.82 && areaPercent > 0.00022);
 
-        // Adaptive filtering tuned for crowded scenes and partial occlusions.
         return (
-          scorePass &&
-          areaPass &&
-          aspect > 0.12 &&
-          aspect < 1.6 &&
+          confidenceOk &&
+          sizeOk &&
+          aspectRatio > 0.12 &&
+          aspectRatio < 1.6 &&
           bw >= 6 &&
           bh >= 10
         );
       });
 
-      // 3. FINAL COUNT & DROWD HANDLING
-      let finalCount = finalDetections.length;
-      let mode: "YOLO" | "DENSITY" = "YOLO";
-      let accuracyType: "Detected Count" | "Estimated Count (Density Model)" =
-        "Detected Count";
+      // Determine count and analysis mode
+      let finalCount = validatedDetections.length;
+      let mode: "Real-time" | "Statistical" = "Real-time";
+      let countType: "Direct Count" | "Estimated Count" = "Direct Count";
 
-      // Automatic Fallback Switch (High overlap or count > 30)
       if (finalCount > 30) {
-        mode = "DENSITY";
-        accuracyType = "Estimated Count (Density Model)";
-        // Simple pixel-density fallback logic
-        const overlapCount = normalizedRaw.length - mergedPassed.length;
-        finalCount += Math.round(overlapCount * 0.25); // Account for hidden occlusions
+        mode = "Statistical";
+        countType = "Estimated Count";
+        const hiddenCount =
+          normalizedDetections.length - filteredDetections.length;
+        finalCount += Math.round(hiddenCount * 0.25);
       }
 
-      const avgConf =
-        finalDetections.length > 0
+      const avgConfidence =
+        validatedDetections.length > 0
           ? Math.round(
-              (finalDetections.reduce((acc, d) => acc + d.score, 0) /
-                finalDetections.length) *
+              (validatedDetections.reduce((acc, d) => acc + d.score, 0) /
+                validatedDetections.length) *
                 100,
             )
           : 0;
 
-      let risk: "Safe" | "Moderate" | "High Risk" = "Safe";
-      if (finalCount > 40) risk = "High Risk";
-      else if (finalCount >= 20) risk = "Moderate";
+      let riskStatus: "Safe" | "Moderate" | "High" = "Safe";
+      if (finalCount > 40) riskStatus = "High";
+      else if (finalCount >= 20) riskStatus = "Moderate";
 
-      setAnalysisData({
-        count: finalCount,
-        confidence: avgConf,
+      setAnalysisResults({
+        totalCount: finalCount,
+        confidence: avgConfidence,
         density: finalCount > 40 ? "High" : finalCount > 20 ? "Medium" : "Low",
-        risk,
-        rawDetections: normalizedRaw,
-        mergedDetections: mergedPassed,
-        finalDetections: finalDetections,
-        inferenceMode: mode,
-        accuracyType: accuracyType,
-        error: null,
+        riskLevel: riskStatus,
+        detectedObjects: normalizedDetections,
+        mergedObjects: filteredDetections,
+        finalObjects: validatedDetections,
+        analysisMode: mode,
+        countType: countType,
+        errorMessage: null,
       });
 
       setTimeout(() => {
-        setIsScanning(false);
-        setShowAnalysis(true);
-      }, 1500);
+        setIsAnalyzing(false);
+        setShowResults(true);
+      }, 1200);
     } catch (err) {
-      toast.error("Inference stabilization failure");
-      setIsScanning(false);
+      toast.error("Analysis failed. Please try again.");
+      setIsAnalyzing(false);
     }
   };
 
-  const startCamera = async () => {
+  const startLiveCapture = async () => {
     try {
-      setIsLive(true);
+      setIsCameraActive(true);
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
       });
       if (videoRef.current) videoRef.current.srcObject = stream;
     } catch (err) {
-      toast.error("Camera access denied");
-      setIsLive(false);
+      toast.error("Unable to access camera");
+      setIsCameraActive(false);
     }
   };
 
-  const captureSnapshot = () => {
+  const takeCameraSnapshot = () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const snapshotCanvas = document.createElement("canvas");
       snapshotCanvas.width = video.videoWidth;
       snapshotCanvas.height = video.videoHeight;
       snapshotCanvas.getContext("2d")?.drawImage(video, 0, 0);
-      setImgPreview(snapshotCanvas.toDataURL("image/jpeg"));
-      runInference(video);
-      setIsLive(false);
+      setImagePreview(snapshotCanvas.toDataURL("image/jpeg"));
+      analyzeImage(video);
+      setIsCameraActive(false);
       const stream = video.srcObject as MediaStream;
       stream?.getTracks().forEach((t) => t.stop());
     }
   };
 
   return (
-    <section
-      id="crowd-prediction"
-      className="h-full w-full flex flex-col pt-10"
-    >
+    <section id="crowd-detection" className="h-full w-full flex flex-col pt-10">
       <div className="container mx-auto px-4 lg:px-20">
         <div className="flex flex-col lg:flex-row gap-12 h-[calc(100vh-200px)]">
           <div className="flex-1 flex flex-col h-full">
             <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 animate-in fade-in slide-in-from-left-5 duration-700">
               <div>
-                <Badge className="mb-4 bg-primary/10 text-primary border-primary/20 uppercase tracking-[0.2em] font-black text-[10px] px-4 py-2 flex w-fit items-center h-7 backdrop-blur-sm self-start">
-                  <Shield className="w-3.5 h-3.5 mr-2 text-primary animate-pulse" />
-                  {isModelLoading
-                    ? "Stable Engine Loading..."
-                    : "Stable Inference Active"}
+                <Badge className="mb-4 bg-blue-500/10 text-blue-400 border-blue-500/20 uppercase tracking-[0.2em] font-black text-[10px] px-4 py-2 flex w-fit items-center h-7 backdrop-blur-sm self-start">
+                  <CheckCircle2 className="w-3.5 h-3.5 mr-2 text-blue-400 animate-pulse" />
+                  {isEngineReady ? "Analyzer Active" : "Loading Engine..."}
                 </Badge>
                 <h2 className="text-5xl font-black text-white tracking-tighter mb-4 leading-none uppercase">
-                  HYBRID <span className="text-primary italic">STABILITY</span>
+                  CROWD <span className="text-blue-400 italic">ANALYSIS</span>
                 </h2>
                 <div className="flex items-center gap-2">
                   <p className="text-white/40 font-medium uppercase tracking-widest text-[10px]">
-                    Balanced Pipeline: Adaptive Precision | WBF + NMS
+                    Intelligent People Detection | Adaptive Processing
                   </p>
-                  {analysisData.error && (
+                  {analysisResults.errorMessage && (
                     <p className="text-[10px] font-black uppercase tracking-widest text-red-500">
-                      Engine offline
+                      Error: Engine unavailable
                     </p>
                   )}
                 </div>
               </div>
 
               <div className="flex gap-2 bg-white/5 rounded-2xl p-1 border border-white/10">
-                {(["Off", "Raw", "Merged", "Final"] as const).map((lvl) => (
-                  <Button
-                    key={lvl}
-                    variant="ghost"
-                    onClick={() => setDebugLevel(lvl)}
-                    className={cn(
-                      "h-8 px-3 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all",
-                      debugLevel === lvl
-                        ? "bg-white/20 text-white"
-                        : "text-white/40 hover:text-white",
-                    )}
-                  >
-                    {lvl}
-                  </Button>
-                ))}
+                {(["Summary", "Detailed", "Technical"] as const).map(
+                  (level) => (
+                    <Button
+                      key={level}
+                      variant="ghost"
+                      onClick={() => setDetailLevel(level)}
+                      className={cn(
+                        "h-8 px-3 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all",
+                        detailLevel === level
+                          ? "bg-white/20 text-white"
+                          : "text-white/40 hover:text-white",
+                      )}
+                    >
+                      {level}
+                    </Button>
+                  ),
+                )}
               </div>
             </div>
 
@@ -604,9 +602,9 @@ const CrowdPredictionSection = () => {
                   const file = e.target.files?.[0];
                   if (file) {
                     const url = URL.createObjectURL(file);
-                    setImgPreview(url);
+                    setImagePreview(url);
                     const img = new Image();
-                    img.onload = () => runInference(img);
+                    img.onload = () => analyzeImage(img);
                     img.src = url;
                   }
                 }}
@@ -615,42 +613,45 @@ const CrowdPredictionSection = () => {
               />
               <canvas ref={canvasRef} className="hidden" />
 
-              {!imgPreview && !isLive ? (
+              {!imagePreview && !isCameraActive ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center p-12 text-center">
                   <div className="w-24 h-24 rounded-[2.5rem] bg-white/5 border border-white/10 flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-500 shadow-2xl">
-                    <Shield className="w-10 h-10 text-primary" />
+                    <Search className="w-10 h-10 text-blue-400" />
                   </div>
                   <h3 className="text-xl font-black text-white uppercase tracking-wider mb-4">
-                    Initialize Stable Analysis
+                    Upload or Capture
                   </h3>
+                  <p className="text-sm text-white/50 mb-6">
+                    Select an image from your device or use your camera
+                  </p>
                   <div className="flex gap-4">
                     <Button
-                      disabled={isModelLoading}
+                      disabled={!isEngineReady}
                       onClick={() => fileInputRef.current?.click()}
-                      className="rounded-2xl px-8 h-14 bg-primary hover:bg-orange-600 font-black uppercase tracking-widest transition-all"
+                      className="rounded-2xl px-8 h-14 bg-blue-500 hover:bg-blue-600 font-black uppercase tracking-widest transition-all"
                     >
-                      <Upload className="w-4 h-4 mr-2" /> Select Image
+                      <Upload className="w-4 h-4 mr-2" /> Upload Image
                     </Button>
                     <Button
-                      disabled={isModelLoading}
+                      disabled={!isEngineReady}
                       variant="outline"
-                      onClick={startCamera}
+                      onClick={startLiveCapture}
                       className="rounded-2xl px-8 h-14 border-white/10 bg-white/5 text-white/60 hover:bg-white/10 font-black uppercase tracking-widest"
                     >
-                      Camera
+                      <Camera className="w-4 h-4 mr-2" /> Camera
                     </Button>
                   </div>
-                  {analysisData.error && (
+                  {analysisResults.errorMessage && (
                     <Button
                       variant="outline"
-                      onClick={loadModel}
+                      onClick={initializeEngine}
                       className="mt-4 rounded-2xl px-8 h-12 border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 font-black uppercase tracking-widest"
                     >
                       Retry Engine
                     </Button>
                   )}
                 </div>
-              ) : isLive ? (
+              ) : isCameraActive ? (
                 <div className="absolute inset-0 bg-black">
                   <video
                     ref={videoRef}
@@ -662,48 +663,47 @@ const CrowdPredictionSection = () => {
                   <div className="absolute inset-x-0 bottom-10 flex justify-center gap-4 px-8">
                     <Button
                       variant="outline"
-                      onClick={() => setIsLive(false)}
+                      onClick={() => setIsCameraActive(false)}
                       className="rounded-2xl bg-white/5 border-white/10 text-white/60 uppercase font-black text-[10px] tracking-widest"
                     >
-                      Abort
+                      Cancel
                     </Button>
                     <Button
-                      onClick={captureSnapshot}
-                      className="rounded-2xl px-10 bg-primary hover:bg-orange-600 font-black uppercase tracking-widest shadow-2xl shadow-primary/40 transition-all hover:scale-110"
+                      onClick={takeCameraSnapshot}
+                      className="rounded-2xl px-10 bg-blue-500 hover:bg-blue-600 font-black uppercase tracking-widest shadow-2xl shadow-blue-500/40 transition-all hover:scale-110"
                     >
-                      Capture Info
+                      Capture
                     </Button>
                   </div>
                 </div>
               ) : (
                 <div className="absolute inset-0">
                   <img
-                    src={imgPreview!}
+                    src={imagePreview!}
                     className="w-full h-full object-cover"
-                    alt="Target"
+                    alt="Analysis"
                   />
 
-                  {isScanning && (
+                  {isAnalyzing && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center z-50 bg-black/40">
-                      <div className="bg-black/60 backdrop-blur-xl px-10 py-6 rounded-3xl border border-primary/20 flex flex-col items-center gap-4">
-                        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin shadow-[0_0_20px_rgba(255,107,0,0.5)]" />
+                      <div className="bg-black/60 backdrop-blur-xl px-10 py-6 rounded-3xl border border-blue-500/20 flex flex-col items-center gap-4">
+                        <div className="w-12 h-12 border-4 border-blue-400 border-t-transparent rounded-full animate-spin shadow-[0_0_20px_rgba(96,165,250,0.5)]" />
                         <p className="text-[12px] font-black text-white uppercase tracking-[0.3em]">
-                          Balancing Recall Pass...
+                          Analyzing Image...
                         </p>
                       </div>
                     </div>
                   )}
 
-                  {showAnalysis && (
+                  {showResults && (
                     <div className="absolute inset-0 z-30 pointer-events-none">
                       <svg
                         className="w-full h-full"
                         viewBox={`0 0 ${canvasRef.current?.width || 100} ${canvasRef.current?.height || 100}`}
                         preserveAspectRatio="xMidYMid slice"
                       >
-                        {/* DEBUG: RAW DETECTIONS */}
-                        {debugLevel === "Raw" &&
-                          analysisData.rawDetections.map((d, i) => (
+                        {detailLevel === "Detailed" &&
+                          analysisResults.detectedObjects.map((d, i) => (
                             <rect
                               key={`raw-${i}`}
                               x={d.bbox[0]}
@@ -711,15 +711,14 @@ const CrowdPredictionSection = () => {
                               width={d.bbox[2]}
                               height={d.bbox[3]}
                               fill="none"
-                              stroke="rgba(255,0,0,0.3)"
+                              stroke="rgba(96,165,250,0.2)"
                               strokeWidth="1"
                               strokeDasharray="2 2"
                             />
                           ))}
 
-                        {/* DEBUG: MULTI-PASS MERGED */}
-                        {debugLevel === "Merged" &&
-                          analysisData.mergedDetections.map((d, i) => (
+                        {detailLevel === "Technical" &&
+                          analysisResults.mergedObjects.map((d, i) => (
                             <rect
                               key={`merged-${i}`}
                               x={d.bbox[0]}
@@ -727,113 +726,109 @@ const CrowdPredictionSection = () => {
                               width={d.bbox[2]}
                               height={d.bbox[3]}
                               fill="none"
-                              stroke="rgba(0,180,255,0.4)"
+                              stroke="rgba(96,165,250,0.4)"
                               strokeWidth="2"
                             />
                           ))}
 
-                        {/* FINAL BALANCED DETECTIONS */}
-                        {(debugLevel === "Final" || debugLevel === "Off") &&
-                          analysisData.finalDetections.map((d, i) => (
-                            <g
-                              key={`final-${i}`}
-                              className="animate-in fade-in duration-500"
-                            >
-                              <rect
-                                x={d.bbox[0]}
-                                y={d.bbox[1]}
-                                width={d.bbox[2]}
-                                height={d.bbox[3]}
-                                fill="rgba(255,107,0,0.05)"
-                                stroke="hsl(var(--primary))"
-                                strokeWidth="2"
-                                className="animate-pulse"
-                              />
-                              <circle
-                                cx={d.bbox[0] + d.bbox[2] / 2}
-                                cy={d.bbox[1] + d.bbox[3] / 2}
-                                r="2"
-                                fill="hsl(var(--primary))"
-                              />
-                            </g>
-                          ))}
+                        {analysisResults.finalObjects.map((d, i) => (
+                          <g
+                            key={`final-${i}`}
+                            className="animate-in fade-in duration-500"
+                          >
+                            <rect
+                              x={d.bbox[0]}
+                              y={d.bbox[1]}
+                              width={d.bbox[2]}
+                              height={d.bbox[3]}
+                              fill="rgba(96,165,250,0.05)"
+                              stroke="hsl(217, 91%, 60%)"
+                              strokeWidth="2"
+                              className="animate-pulse"
+                            />
+                            <circle
+                              cx={d.bbox[0] + d.bbox[2] / 2}
+                              cy={d.bbox[1] + d.bbox[3] / 2}
+                              r="2"
+                              fill="hsl(217, 91%, 60%)"
+                            />
+                          </g>
+                        ))}
                       </svg>
                     </div>
                   )}
 
-                  {showAnalysis && (
+                  {showResults && (
                     <div className="absolute top-8 right-8 z-40 animate-in fade-in zoom-in duration-500 flex flex-col gap-3">
-                      <div className="p-5 glass-panel rounded-3xl flex items-center gap-4 border-white/10 min-w-[280px] shadow-2xl relative overflow-hidden group">
+                      <div className="p-5 bg-black/70 backdrop-blur-2xl rounded-3xl flex items-center gap-4 border border-white/10 min-w-[280px] shadow-2xl relative overflow-hidden group">
                         <div className="absolute top-0 right-0 p-2 opacity-30">
                           <Badge
                             variant="outline"
-                            className="text-[8px] border-primary/40 text-primary uppercase font-black tracking-tighter"
+                            className="text-[8px] border-blue-400/40 text-blue-400 uppercase font-black tracking-tighter"
                           >
-                            {analysisData.inferenceMode}
+                            {analysisResults.analysisMode}
                           </Badge>
                         </div>
-                        <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner">
+                        <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400 shadow-inner">
                           <Users className="w-6 h-6" />
                         </div>
                         <div>
                           <p className="text-[10px] font-black uppercase text-white/30 tracking-widest">
-                            {analysisData.accuracyType}
+                            {analysisResults.countType}
                           </p>
                           <p className="text-2xl font-black text-white leading-none mt-1">
-                            {analysisData.count}{" "}
+                            {analysisResults.totalCount}{" "}
                             <span className="text-[10px] text-white/40 ml-1">
-                              Humans
+                              People
                             </span>
                           </p>
                         </div>
                       </div>
 
-                      <div className="p-5 glass-panel rounded-3xl flex items-center gap-4 border-white/10 relative overflow-hidden">
-                        <div className="w-12 h-12 rounded-2xl bg-orange-500/10 flex items-center justify-center text-orange-500 shadow-inner">
+                      <div className="p-5 bg-black/70 backdrop-blur-2xl rounded-3xl flex items-center gap-4 border border-white/10 relative overflow-hidden">
+                        <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500 shadow-inner">
                           <Target className="w-6 h-6" />
                         </div>
                         <div>
                           <p className="text-[10px] font-black uppercase text-white/30 tracking-widest">
-                            Detection Confidence
+                            Confidence Level
                           </p>
                           <p
                             className={cn(
                               "text-2xl font-black leading-none mt-1",
-                              analysisData.confidence < 60
-                                ? "text-yellow-500"
+                              analysisResults.confidence < 60
+                                ? "text-yellow-400"
                                 : "text-white",
                             )}
                           >
-                            {analysisData.confidence}%
+                            {analysisResults.confidence}%
                           </p>
                         </div>
-                        {analysisData.confidence < 60 && (
-                          <div className="absolute bottom-1 right-3 flex items-center gap-1 text-yellow-500 animate-pulse">
+                        {analysisResults.confidence < 60 && (
+                          <div className="absolute bottom-1 right-3 flex items-center gap-1 text-yellow-400 animate-pulse">
                             <AlertTriangle className="w-3 h-3" />
                             <span className="text-[6px] font-black uppercase">
-                              Low Accuracy
+                              Low Confidence
                             </span>
                           </div>
                         )}
                       </div>
 
-                      {analysisData.confidence < 60 && (
+                      {analysisResults.confidence < 60 && (
                         <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-2xl flex items-center gap-3 animate-bounce">
-                          <Info className="w-4 h-4 text-yellow-500" />
+                          <AlertCircle className="w-4 h-4 text-yellow-500" />
                           <p className="text-[8px] font-black text-yellow-500 uppercase tracking-widest leading-tight">
-                            Low confidence – result may be inaccurate
-                            <br />
-                            due to poor visibility or dense occlusion.
+                            Low confidence results – verify image clarity
                           </p>
                         </div>
                       )}
 
                       <div
                         className={cn(
-                          "p-5 glass-panel rounded-3xl flex items-center gap-4 border-l-4",
-                          analysisData.risk === "Safe"
-                            ? "border-l-emerald-500"
-                            : analysisData.risk === "Moderate"
+                          "p-5 bg-black/70 backdrop-blur-2xl rounded-3xl flex items-center gap-4 border-l-4",
+                          analysisResults.riskLevel === "Safe"
+                            ? "border-l-green-500"
+                            : analysisResults.riskLevel === "Moderate"
                               ? "border-l-yellow-500"
                               : "border-l-red-500",
                         )}
@@ -842,9 +837,9 @@ const CrowdPredictionSection = () => {
                           <Zap
                             className={cn(
                               "w-6 h-6",
-                              analysisData.risk === "Safe"
-                                ? "text-emerald-500"
-                                : analysisData.risk === "Moderate"
+                              analysisResults.riskLevel === "Safe"
+                                ? "text-green-500"
+                                : analysisResults.riskLevel === "Moderate"
                                   ? "text-yellow-500"
                                   : "text-red-500",
                             )}
@@ -852,19 +847,19 @@ const CrowdPredictionSection = () => {
                         </div>
                         <div>
                           <p className="text-[10px] font-black uppercase text-white/30 tracking-widest">
-                            Neural Safety Index
+                            Risk Assessment
                           </p>
                           <p
                             className={cn(
                               "text-xl font-black uppercase tracking-tighter mt-1",
-                              analysisData.risk === "Safe"
-                                ? "text-emerald-500"
-                                : analysisData.risk === "Moderate"
+                              analysisResults.riskLevel === "Safe"
+                                ? "text-green-500"
+                                : analysisResults.riskLevel === "Moderate"
                                   ? "text-yellow-500"
                                   : "text-red-500",
                             )}
                           >
-                            {analysisData.risk}
+                            {analysisResults.riskLevel}
                           </p>
                         </div>
                       </div>
@@ -874,12 +869,12 @@ const CrowdPredictionSection = () => {
                   <Button
                     variant="link"
                     onClick={() => {
-                      setImgPreview(null);
-                      setShowAnalysis(false);
+                      setImagePreview(null);
+                      setShowResults(false);
                     }}
                     className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 text-white/40 uppercase tracking-widest font-black text-[10px] hover:text-white transition-all bg-black/20 hover:bg-black/40 px-6 py-2 rounded-full border border-white/5"
                   >
-                    Reset Hybrid Pipeline
+                    Clear Analysis
                   </Button>
                 </div>
               )}
@@ -887,86 +882,87 @@ const CrowdPredictionSection = () => {
           </div>
 
           <div className="w-full lg:w-96 flex flex-col gap-8 pt-12">
-            <div className="p-8 rounded-[3rem] glass-panel border-white/10 shadow-2xl">
+            <div className="p-8 rounded-[3rem] bg-black/40 border border-white/10 shadow-2xl backdrop-blur-2xl">
               <h3 className="text-[11px] font-black uppercase tracking-[0.3em] text-white/30 mb-8 flex items-center gap-2">
-                <Layers className="w-4 h-4 text-primary" /> Multi-Pass Stats
+                <BarChart3 className="w-4 h-4 text-blue-400" /> Detection Stats
               </h3>
               <div className="space-y-6">
                 <div className="flex flex-col gap-2">
-                  <p className="text-[10px] font-black text-white/30 uppercase tracking-widest tracking-[0.2em]">
-                    Stability Matrix
+                  <p className="text-[10px] font-black text-white/30 uppercase tracking-widest">
+                    Analysis Mode
                   </p>
                   <p className="text-sm font-black text-white italic opacity-80">
-                    Recall/Precision Balanced Mode
+                    {analysisResults.analysisMode} Detection Method
                   </p>
                 </div>
                 <div className="h-px bg-white/5 w-full my-4" />
-                <div className="bg-primary/5 p-5 rounded-3xl border border-primary/20">
-                  <p className="text-[11px] text-primary font-black uppercase tracking-widest mb-4 border-b border-primary/20 pb-2">
-                    Final Logic Tree
+                <div className="bg-blue-500/5 p-5 rounded-3xl border border-blue-500/20">
+                  <p className="text-[11px] text-blue-400 font-black uppercase tracking-widest mb-4 border-b border-blue-500/20 pb-2">
+                    Processing Summary
                   </p>
                   <div className="flex justify-between items-center mb-2.5">
                     <span className="text-[10px] text-white/40 uppercase">
-                      Raw Neural Hits
+                      Initial Detections
                     </span>
                     <span className="text-[10px] text-white font-black">
-                      {analysisData.rawDetections.length}
+                      {analysisResults.detectedObjects.length}
                     </span>
                   </div>
                   <div className="flex justify-between items-center mb-2.5">
                     <span className="text-[10px] text-white/40 uppercase">
-                      NMS Suppression
+                      Redundancy Removed
                     </span>
                     <span className="text-[10px] text-red-500 font-black">
                       -
-                      {analysisData.rawDetections.length -
-                        analysisData.mergedDetections.length}
+                      {analysisResults.detectedObjects.length -
+                        analysisResults.mergedObjects.length}
                     </span>
                   </div>
                   <div className="flex justify-between items-center mb-2.5">
                     <span className="text-[10px] text-white/40 uppercase">
-                      FP Filtering
+                      False Positives Filtered
                     </span>
                     <span className="text-[10px] text-orange-500 font-black">
                       -
-                      {analysisData.mergedDetections.length -
-                        analysisData.finalDetections.length}
+                      {analysisResults.mergedObjects.length -
+                        analysisResults.finalObjects.length}
                     </span>
                   </div>
                   <div className="flex justify-between items-center mt-4 pt-4 border-t border-white/5">
                     <span className="text-[11px] text-white font-black uppercase tracking-tighter">
-                      Verified Count
+                      Final Count
                     </span>
                     <span className="text-[14px] text-emerald-500 font-black">
-                      {analysisData.count}
+                      {analysisResults.totalCount}
                     </span>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="p-8 rounded-[3rem] bg-primary/10 border border-primary/20 group relative overflow-hidden shadow-2xl">
-              <div className="absolute -right-4 -top-4 w-24 h-24 bg-primary/10 rounded-full blur-3xl" />
-              <Shield className="w-10 h-10 text-primary mb-4 animate-pulse" />
-              <h4 className="text-xs font-black text-white uppercase tracking-widest mb-2 font-black">
-                Neural Calibration
+            <div className="p-8 rounded-[3rem] bg-blue-500/10 border border-blue-500/20 group relative overflow-hidden shadow-2xl backdrop-blur-2xl">
+              <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/10 rounded-full blur-3xl" />
+              <Shield className="w-10 h-10 text-blue-400 mb-4 animate-pulse" />
+              <h4 className="text-xs font-black text-white uppercase tracking-widest mb-2">
+                Quick Tips
               </h4>
               <p className="text-[10px] text-white/40 leading-relaxed font-bold mb-6 italic opacity-80">
-                Optimized 640px inference pass with recursive tiling. Precision
-                floor maintained at 40% confidence.
+                Ensure good lighting and clear visibility for accurate results.
+                Multiple detection passes analyze different regions and
+                resolutions.
               </p>
               <Button
-                disabled={isModelLoading}
-                className="w-full rounded-2xl bg-primary hover:bg-orange-600 border-none font-black uppercase text-[10px] h-12 shadow-xl shadow-primary/20"
+                disabled={!isEngineReady}
+                className="w-full rounded-2xl bg-blue-500 hover:bg-blue-600 border-none font-black uppercase text-[10px] h-12 shadow-xl shadow-blue-500/20"
                 onClick={() => {
-                  if (imgPreview) {
+                  if (imagePreview) {
                     const img = new Image();
-                    img.onload = () => runInference(img);
-                    img.src = imgPreview;
+                    img.onload = () => analyzeImage(img);
+                    img.src = imagePreview;
                   }
                 }}
               >
-                Force Recall Refresh
+                <TrendingUp className="w-4 h-4 mr-2" /> Reanalyze Image
               </Button>
             </div>
           </div>
@@ -976,4 +972,4 @@ const CrowdPredictionSection = () => {
   );
 };
 
-export default CrowdPredictionSection;
+export default CrowdDensityAnalyzer;
