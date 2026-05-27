@@ -51,8 +51,16 @@ All colors MUST be HSL.
     --warning-foreground: 0 0% 100%;
 
     --gradient-warm: linear-gradient(135deg, hsl(25 95% 53%), hsl(0 72% 51%));
-    --gradient-cool: linear-gradient(135deg, hsl(217 91% 60%), hsl(142 76% 36%));
-    --gradient-spiritual: linear-gradient(135deg, hsl(39 100% 50%), hsl(25 95% 53%));
+    --gradient-cool: linear-gradient(
+      135deg,
+      hsl(217 91% 60%),
+      hsl(142 76% 36%)
+    );
+    --gradient-spiritual: linear-gradient(
+      135deg,
+      hsl(39 100% 50%),
+      hsl(25 95% 53%)
+    );
 
     --shadow-spiritual: 0 20px 40px -10px hsl(25 95% 53% / 0.3);
     --shadow-tech: 0 20px 40px -10px hsl(217 91% 60% / 0.3);
@@ -119,8 +127,10 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground overflow-hidden h-screen w-screen fixed;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    @apply bg-background text-foreground min-h-dvh w-full overflow-x-hidden;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
   }
 
   .section-container {
@@ -136,8 +146,15 @@ All colors MUST be HSL.
   }
 
   @keyframes scan {
-    0%, 100% { top: 0%; opacity: 0.5; }
-    50% { top: 100%; opacity: 1; }
+    0%,
+    100% {
+      top: 0%;
+      opacity: 0.5;
+    }
+    50% {
+      top: 100%;
+      opacity: 1;
+    }
   }
 
   .animate-scan {

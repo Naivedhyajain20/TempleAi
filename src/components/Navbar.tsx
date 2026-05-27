@@ -22,10 +22,10 @@ const Navbar: React.FC<NavbarProps> = ({ onSectionChange, activeSection }) => {
     { id: "iot-sensors", label: "IoT Sensors" },
     { id: "emergency-alerts", label: "Safety Alerts" },
     { id: "traffic-management", label: "Traffic" },
-    { id: "mobile-app", label: "Mobile App" },
-    { id: "special-assistance", label: "Assistance" },
+    { id: "tech-stack", label: "AI Technology" },
     { id: "temple-map", label: "Temple Map" },
-    { id: "tech-stack", label: "Technology" },
+    { id: "special-assistance", label: "Assistance" },
+    { id: "mobile-app", label: "Mobile App" }, 
     { id: "contact", label: "Contact" },
   ];
 
@@ -38,10 +38,10 @@ const Navbar: React.FC<NavbarProps> = ({ onSectionChange, activeSection }) => {
             className="flex shrink-0 items-center gap-2.5 px-2 group"
             aria-label="Go to home"
           >
-            <span className="text-4xl transition-transform group-hover:scale-110">
+            <span className="text-3xl sm:text-4xl transition-transform group-hover:scale-110">
               🛕
             </span>
-            <span className="bg-gradient-warm bg-clip-text text-4xl font-black tracking-tight text-transparent">
+            <span className="bg-gradient-warm bg-clip-text text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-transparent">
               SomPath
             </span>
           </button>
@@ -100,7 +100,7 @@ const Navbar: React.FC<NavbarProps> = ({ onSectionChange, activeSection }) => {
         {/* Mobile Navigation */}
         {isOpen && (
           <div className="absolute left-4 right-4 top-20 rounded-[1.75rem] border border-white/10 bg-background/95 p-6 shadow-2xl backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-300 lg:hidden">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {navLinks.map((link) => (
                 <button
                   key={link.id}

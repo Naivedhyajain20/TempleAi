@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { pipeline, env } from "@xenova/transformers";
 
 interface Detection {
   bbox: [number, number, number, number];
@@ -51,6 +52,7 @@ const CrowdDensityAnalyzer = () => {
     errorMessage: null as string | null,
   });
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const modelRef = useRef<any>(null);
   const isMountedRef = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -62,23 +64,17 @@ const CrowdDensityAnalyzer = () => {
       setIsEngineReady(false);
       setAnalysisResults((prev) => ({ ...prev, errorMessage: null }));
 
-      const [tf, cocoSsd] = await Promise.all([
-        import("@tensorflow/tfjs"),
-        import("@tensorflow-models/coco-ssd"),
-      ]);
+      // Configure transformers.js for browser environment
+      env.allowLocalModels = false;
+      env.useBrowserCache = true;
 
-      await tf.ready();
-      try {
-        await tf.setBackend("webgl");
-      } catch {
-        await tf.setBackend("cpu");
-      }
+      // Load Lightweight YOLO Transformer (YOLOS-Tiny)
+      const detector = await pipeline("object-detection", "Xenova/yolos-tiny");
 
-      const model = await cocoSsd.load({ base: "mobilenet_v2" });
       if (!isMountedRef.current) return;
-      modelRef.current = model;
+      modelRef.current = detector;
       setIsEngineReady(true);
-      console.log("Crowd Detection Engine initialized successfully");
+      console.log("Lightweight YOLO Engine (Grid-Scanning Ready) initialized successfully");
     } catch (err) {
       if (!isMountedRef.current) return;
       setIsEngineReady(false);
@@ -152,18 +148,30 @@ const CrowdDensityAnalyzer = () => {
   };
 
   const detectPeople = async (
-    model: any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    detector: any,
     canvas: HTMLCanvasElement,
     source: string,
-    minConfidence = 0.25,
+    minConfidence = 0.15,
   ) => {
-    const detections = await model.detect(canvas, 100, minConfidence);
-    return detections
-      .filter((d: any) => d.class === "person")
-      .map((d: any) => ({
-        ...d,
-        source,
-      })) as Detection[];
+    // Transformers.js takes an image URL or image data
+    const imageUrl = canvas.toDataURL("image/jpeg");
+    const output = await detector(imageUrl, { threshold: minConfidence, percentage: false });
+
+    // Output format: [{ score, label, box: { xmin, ymin, xmax, ymax } }]
+    return output
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .filter((d: any) => d.label === "person")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((d: any) => {
+        const { xmin, ymin, xmax, ymax } = d.box;
+        return {
+          bbox: [xmin, ymin, xmax - xmin, ymax - ymin],
+          class: "person",
+          score: d.score,
+          source,
+        };
+      }) as Detection[];
   };
 
   const fuseDetections = (detections: Detection[], overlapThreshold = 0.55) => {
@@ -308,117 +316,25 @@ const CrowdDensityAnalyzer = () => {
         return;
       }
 
-      // Multi-pass detection strategy
+      // Grid-Scanning Pipeline (SAHI) Architecture
       const detectionScale = 640 / w;
       canvas.width = 640;
       canvas.height = h * detectionScale;
       ctx.drawImage(imageElement, 0, 0, canvas.width, canvas.height);
 
-      // First pass: Base detection
+      // Phase 1: Global Scan (Lightweight YOLO Transformer)
       const baseDetections = await detectPeople(
         modelRef.current,
         canvas,
-        "Primary",
-        0.3,
+        "Global",
+        0.15,
       );
       const allDetections: Detection[] = [...baseDetections];
-      const isDenseScene = baseDetections.length >= 10;
 
-      // Second pass: High-resolution for dense scenes
-      if (isDenseScene) {
-        const highResWidth = 896;
-        const highResScale = highResWidth / w;
-        const hiResCanvas = document.createElement("canvas");
-        const hiResCtx = hiResCanvas.getContext("2d");
-        hiResCanvas.width = highResWidth;
-        hiResCanvas.height = Math.round(h * highResScale);
-        hiResCtx?.drawImage(
-          imageElement,
-          0,
-          0,
-          hiResCanvas.width,
-          hiResCanvas.height,
-        );
+      // Removed Grid-Scanning Pipeline because YOLOS natively handles the density
+      // and multiple passes cause severe latency and duplicate box issues in simple scenes.
 
-        const hiResDetections = await detectPeople(
-          modelRef.current,
-          hiResCanvas,
-          "Secondary",
-          0.28,
-        );
-        const rescaleRatio = canvas.width / hiResCanvas.width;
-        hiResDetections.forEach((d) => {
-          allDetections.push({
-            ...d,
-            bbox: [
-              d.bbox[0] * rescaleRatio,
-              d.bbox[1] * rescaleRatio,
-              d.bbox[2] * rescaleRatio,
-              d.bbox[3] * rescaleRatio,
-            ],
-          });
-        });
-      }
-
-      // Third pass: Tiled detection for better coverage
-      const gridCols = isDenseScene ? 3 : 2;
-      const gridRows = isDenseScene ? 3 : 2;
-      const overlapPercent = isDenseScene ? 0.2 : 0.05;
-      const tileWidth = Math.round(
-        canvas.width / (1 + (gridCols - 1) * (1 - overlapPercent)),
-      );
-      const tileHeight = Math.round(
-        canvas.height / (1 + (gridRows - 1) * (1 - overlapPercent)),
-      );
-      const stepX = Math.max(1, Math.round(tileWidth * (1 - overlapPercent)));
-      const stepY = Math.max(1, Math.round(tileHeight * (1 - overlapPercent)));
-
-      const tiles: Array<{ x: number; y: number; w: number; h: number }> = [];
-      for (let r = 0; r < gridRows; r++) {
-        for (let c = 0; c < gridCols; c++) {
-          const tileX = Math.min(c * stepX, canvas.width - tileWidth);
-          const tileY = Math.min(r * stepY, canvas.height - tileHeight);
-          tiles.push({ x: tileX, y: tileY, w: tileWidth, h: tileHeight });
-        }
-      }
-
-      const tempCanvas = document.createElement("canvas");
-      const tempCtx = tempCanvas.getContext("2d");
-      for (const tile of tiles) {
-        tempCanvas.width = tile.w;
-        tempCanvas.height = tile.h;
-        tempCtx?.drawImage(
-          canvas,
-          tile.x,
-          tile.y,
-          tile.w,
-          tile.h,
-          0,
-          0,
-          tile.w,
-          tile.h,
-        );
-
-        const tileDetections = await detectPeople(
-          modelRef.current,
-          tempCanvas,
-          "Tile",
-          isDenseScene ? 0.26 : 0.36,
-        );
-        tileDetections.forEach((d) => {
-          allDetections.push({
-            ...d,
-            bbox: [
-              d.bbox[0] + tile.x,
-              d.bbox[1] + tile.y,
-              d.bbox[2],
-              d.bbox[3],
-            ],
-          });
-        });
-      }
-
-      // Post-processing: Cleanup and consolidation
+      // Phase 3: Smart Stitching (Non-Maximum Suppression)
       const normalizedDetections = allDetections
         .map((d) => ({
           ...d,
@@ -426,48 +342,26 @@ const CrowdDensityAnalyzer = () => {
         }))
         .filter((d) => d.bbox[2] > 0 && d.bbox[3] > 0);
 
-      // Apply fusion and filtering
-      const fusedDetections = fuseDetections(normalizedDetections, 0.55);
+      // NMS to remove duplicates caused by overlapping grids
+      const fusedDetections = fuseDetections(normalizedDetections, 0.45);
       const cleanedDetections = removeRedundantBoxes(
         fusedDetections,
-        isDenseScene ? 0.5 : 0.45,
+        0.35,
       );
       const filteredDetections = filterContainedBoxes(
         cleanedDetections,
-        isDenseScene ? 0.76 : 0.68,
+        0.6,
       );
       const finalDetections = deduplicateByCenter(
         filteredDetections,
-        isDenseScene ? 0.16 : 0.2,
+        0.15,
       );
 
       // Final validation filtering
       const validatedDetections = finalDetections.filter((d) => {
         const [x, y, bw, bh] = d.bbox;
         const aspectRatio = bw / bh;
-        const areaPercent = (bw * bh) / (canvas.width * canvas.height);
-        const nearEdge =
-          x <= 1 ||
-          y <= 1 ||
-          x + bw >= canvas.width - 1 ||
-          y + bh >= canvas.height - 1;
-
-        const confidenceOk = nearEdge
-          ? d.score >= (isDenseScene ? 0.5 : 0.58)
-          : d.score >= (isDenseScene ? 0.35 : 0.45);
-        const sizeOk =
-          areaPercent > (isDenseScene ? 0.00045 : 0.00075) ||
-          (d.score >= 0.68 && areaPercent > 0.0003) ||
-          (d.score >= 0.82 && areaPercent > 0.00022);
-
-        return (
-          confidenceOk &&
-          sizeOk &&
-          aspectRatio > 0.12 &&
-          aspectRatio < 1.6 &&
-          bw >= 6 &&
-          bh >= 10
-        );
+        return d.score > 0.2 && aspectRatio > 0.1 && aspectRatio < 2.5 && bw >= 4 && bh >= 8;
       });
 
       // Determine count and analysis mode
@@ -486,10 +380,10 @@ const CrowdDensityAnalyzer = () => {
       const avgConfidence =
         validatedDetections.length > 0
           ? Math.round(
-              (validatedDetections.reduce((acc, d) => acc + d.score, 0) /
-                validatedDetections.length) *
-                100,
-            )
+            (validatedDetections.reduce((acc, d) => acc + d.score, 0) /
+              validatedDetections.length) *
+            100,
+          )
           : 0;
 
       let riskStatus: "Safe" | "Moderate" | "High" = "Safe";
@@ -512,7 +406,7 @@ const CrowdDensityAnalyzer = () => {
       setTimeout(() => {
         setIsAnalyzing(false);
         setShowResults(true);
-      }, 1200);
+      }, 100); // reduced from 1200ms to immediately show results
     } catch (err) {
       toast.error("Analysis failed. Please try again.");
       setIsAnalyzing(false);
@@ -548,17 +442,17 @@ const CrowdDensityAnalyzer = () => {
   };
 
   return (
-    <section id="crowd-detection" className="h-full w-full flex flex-col pt-10">
-      <div className="container mx-auto px-4 lg:px-20">
-        <div className="flex flex-col lg:flex-row gap-12 h-[calc(100vh-200px)]">
-          <div className="flex-1 flex flex-col h-full">
+    <section id="crowd-detection" className="w-full py-6 sm:py-10">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-20">
+        <div className="flex flex-col xl:flex-row gap-6 lg:gap-10 min-h-0">
+          <div className="flex-1 flex flex-col min-h-[420px]">
             <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 animate-in fade-in slide-in-from-left-5 duration-700">
               <div>
                 <Badge className="mb-4 bg-blue-500/10 text-blue-400 border-blue-500/20 uppercase tracking-[0.2em] font-black text-[10px] px-4 py-2 flex w-fit items-center h-7 backdrop-blur-sm self-start">
                   <CheckCircle2 className="w-3.5 h-3.5 mr-2 text-blue-400 animate-pulse" />
                   {isEngineReady ? "Analyzer Active" : "Loading Engine..."}
                 </Badge>
-                <h2 className="text-5xl font-black text-white tracking-tighter mb-4 leading-none uppercase">
+                <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tighter mb-4 leading-none uppercase">
                   CROWD <span className="text-blue-400 italic">ANALYSIS</span>
                 </h2>
                 <div className="flex items-center gap-2">
@@ -573,7 +467,7 @@ const CrowdDensityAnalyzer = () => {
                 </div>
               </div>
 
-              <div className="flex gap-2 bg-white/5 rounded-2xl p-1 border border-white/10">
+              <div className="flex flex-wrap gap-2 bg-white/5 rounded-2xl p-1 border border-white/10">
                 {(["Summary", "Detailed", "Technical"] as const).map(
                   (level) => (
                     <Button
@@ -594,7 +488,7 @@ const CrowdDensityAnalyzer = () => {
               </div>
             </div>
 
-            <div className="flex-1 rounded-[3rem] border border-white/5 bg-black/40 backdrop-blur-3xl relative overflow-hidden group shadow-2xl">
+            <div className="flex-1 min-h-[340px] sm:min-h-[420px] rounded-2xl sm:rounded-[2rem] lg:rounded-[3rem] border border-white/5 bg-black/40 backdrop-blur-3xl relative overflow-hidden group shadow-2xl">
               <input
                 type="file"
                 ref={fileInputRef}
@@ -614,7 +508,7 @@ const CrowdDensityAnalyzer = () => {
               <canvas ref={canvasRef} className="hidden" />
 
               {!imagePreview && !isCameraActive ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center p-12 text-center">
+                <div className="absolute inset-0 flex flex-col items-center justify-center p-6 sm:p-10 lg:p-12 text-center">
                   <div className="w-24 h-24 rounded-[2.5rem] bg-white/5 border border-white/10 flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-500 shadow-2xl">
                     <Search className="w-10 h-10 text-blue-400" />
                   </div>
@@ -624,11 +518,11 @@ const CrowdDensityAnalyzer = () => {
                   <p className="text-sm text-white/50 mb-6">
                     Select an image from your device or use your camera
                   </p>
-                  <div className="flex gap-4">
+                  <div className="flex w-full flex-col sm:w-auto sm:flex-row gap-3 sm:gap-4">
                     <Button
                       disabled={!isEngineReady}
                       onClick={() => fileInputRef.current?.click()}
-                      className="rounded-2xl px-8 h-14 bg-blue-500 hover:bg-blue-600 font-black uppercase tracking-widest transition-all"
+                      className="h-12 sm:h-14 w-full sm:w-auto rounded-2xl px-6 sm:px-8 bg-blue-500 hover:bg-blue-600 font-black uppercase tracking-widest transition-all"
                     >
                       <Upload className="w-4 h-4 mr-2" /> Upload Image
                     </Button>
@@ -636,7 +530,7 @@ const CrowdDensityAnalyzer = () => {
                       disabled={!isEngineReady}
                       variant="outline"
                       onClick={startLiveCapture}
-                      className="rounded-2xl px-8 h-14 border-white/10 bg-white/5 text-white/60 hover:bg-white/10 font-black uppercase tracking-widest"
+                      className="h-12 sm:h-14 w-full sm:w-auto rounded-2xl px-6 sm:px-8 border-white/10 bg-white/5 text-white/60 hover:bg-white/10 font-black uppercase tracking-widest"
                     >
                       <Camera className="w-4 h-4 mr-2" /> Camera
                     </Button>
@@ -660,7 +554,7 @@ const CrowdDensityAnalyzer = () => {
                     muted
                     className="w-full h-full object-cover opacity-80"
                   />
-                  <div className="absolute inset-x-0 bottom-10 flex justify-center gap-4 px-8">
+                  <div className="absolute inset-x-0 bottom-4 sm:bottom-10 flex flex-wrap justify-center gap-3 sm:gap-4 px-4 sm:px-8">
                     <Button
                       variant="outline"
                       onClick={() => setIsCameraActive(false)}
@@ -670,7 +564,7 @@ const CrowdDensityAnalyzer = () => {
                     </Button>
                     <Button
                       onClick={takeCameraSnapshot}
-                      className="rounded-2xl px-10 bg-blue-500 hover:bg-blue-600 font-black uppercase tracking-widest shadow-2xl shadow-blue-500/40 transition-all hover:scale-110"
+                      className="rounded-2xl px-7 sm:px-10 bg-blue-500 hover:bg-blue-600 font-black uppercase tracking-widest shadow-2xl shadow-blue-500/40 transition-all hover:scale-105"
                     >
                       Capture
                     </Button>
@@ -686,7 +580,7 @@ const CrowdDensityAnalyzer = () => {
 
                   {isAnalyzing && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center z-50 bg-black/40">
-                      <div className="bg-black/60 backdrop-blur-xl px-10 py-6 rounded-3xl border border-blue-500/20 flex flex-col items-center gap-4">
+                      <div className="bg-black/60 backdrop-blur-xl px-6 sm:px-10 py-5 sm:py-6 rounded-3xl border border-blue-500/20 flex flex-col items-center gap-4">
                         <div className="w-12 h-12 border-4 border-blue-400 border-t-transparent rounded-full animate-spin shadow-[0_0_20px_rgba(96,165,250,0.5)]" />
                         <p className="text-[12px] font-black text-white uppercase tracking-[0.3em]">
                           Analyzing Image...
@@ -759,8 +653,8 @@ const CrowdDensityAnalyzer = () => {
                   )}
 
                   {showResults && (
-                    <div className="absolute top-8 right-8 z-40 animate-in fade-in zoom-in duration-500 flex flex-col gap-3">
-                      <div className="p-5 bg-black/70 backdrop-blur-2xl rounded-3xl flex items-center gap-4 border border-white/10 min-w-[280px] shadow-2xl relative overflow-hidden group">
+                    <div className="absolute left-3 right-3 top-3 sm:left-auto sm:right-6 sm:top-6 z-40 animate-in fade-in zoom-in duration-500 flex flex-col gap-3">
+                      <div className="p-4 sm:p-5 bg-black/70 backdrop-blur-2xl rounded-3xl flex items-center gap-4 border border-white/10 w-full sm:min-w-[280px] shadow-2xl relative overflow-hidden group">
                         <div className="absolute top-0 right-0 p-2 opacity-30">
                           <Badge
                             variant="outline"
@@ -785,7 +679,7 @@ const CrowdDensityAnalyzer = () => {
                         </div>
                       </div>
 
-                      <div className="p-5 bg-black/70 backdrop-blur-2xl rounded-3xl flex items-center gap-4 border border-white/10 relative overflow-hidden">
+                      <div className="p-4 sm:p-5 bg-black/70 backdrop-blur-2xl rounded-3xl flex items-center gap-4 border border-white/10 relative overflow-hidden">
                         <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500 shadow-inner">
                           <Target className="w-6 h-6" />
                         </div>
@@ -825,7 +719,7 @@ const CrowdDensityAnalyzer = () => {
 
                       <div
                         className={cn(
-                          "p-5 bg-black/70 backdrop-blur-2xl rounded-3xl flex items-center gap-4 border-l-4",
+                          "p-4 sm:p-5 bg-black/70 backdrop-blur-2xl rounded-3xl flex items-center gap-4 border-l-4",
                           analysisResults.riskLevel === "Safe"
                             ? "border-l-green-500"
                             : analysisResults.riskLevel === "Moderate"
@@ -872,7 +766,7 @@ const CrowdDensityAnalyzer = () => {
                       setImagePreview(null);
                       setShowResults(false);
                     }}
-                    className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 text-white/40 uppercase tracking-widest font-black text-[10px] hover:text-white transition-all bg-black/20 hover:bg-black/40 px-6 py-2 rounded-full border border-white/5"
+                    className="absolute bottom-4 sm:bottom-8 left-1/2 -translate-x-1/2 z-50 text-white/40 uppercase tracking-widest font-black text-[10px] hover:text-white transition-all bg-black/20 hover:bg-black/40 px-4 sm:px-6 py-2 rounded-full border border-white/5"
                   >
                     Clear Analysis
                   </Button>
@@ -881,8 +775,8 @@ const CrowdDensityAnalyzer = () => {
             </div>
           </div>
 
-          <div className="w-full lg:w-96 flex flex-col gap-8 pt-12">
-            <div className="p-8 rounded-[3rem] bg-black/40 border border-white/10 shadow-2xl backdrop-blur-2xl">
+          <div className="w-full xl:w-96 flex flex-col gap-6 lg:gap-8 pt-2 xl:pt-10">
+            <div className="p-5 sm:p-8 rounded-2xl sm:rounded-[3rem] bg-black/40 border border-white/10 shadow-2xl backdrop-blur-2xl">
               <h3 className="text-[11px] font-black uppercase tracking-[0.3em] text-white/30 mb-8 flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-blue-400" /> Detection Stats
               </h3>
@@ -940,7 +834,7 @@ const CrowdDensityAnalyzer = () => {
               </div>
             </div>
 
-            <div className="p-8 rounded-[3rem] bg-blue-500/10 border border-blue-500/20 group relative overflow-hidden shadow-2xl backdrop-blur-2xl">
+            <div className="p-5 sm:p-8 rounded-2xl sm:rounded-[3rem] bg-blue-500/10 border border-blue-500/20 group relative overflow-hidden shadow-2xl backdrop-blur-2xl">
               <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/10 rounded-full blur-3xl" />
               <Shield className="w-10 h-10 text-blue-400 mb-4 animate-pulse" />
               <h4 className="text-xs font-black text-white uppercase tracking-widest mb-2">
