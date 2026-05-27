@@ -90,12 +90,12 @@ export default function Temple3D() {
           <HotspotItem key={i} {...hs} onClick={() => setSelected(hs)} />
         ))}
 
-      <OrbitControls
-  enableZoom={true}
-  zoomSpeed={1}
-  minDistance={0.1}
-  maxDistance={200}
-/>
+        <OrbitControls
+          enableZoom={true}
+          zoomSpeed={1}
+          minDistance={0.1}
+          maxDistance={200}
+        />
 
       </Canvas>
 

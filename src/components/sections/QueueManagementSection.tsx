@@ -53,30 +53,9 @@ const QueueManagementSection = () => {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto mb-12">
-          {features.map((feature, index) => (
-            <div
-              key={index}
-              className="group p-6 rounded-xl bg-card border border-border hover:shadow-lg hover:border-primary/50 transition-all duration-300 hover:-translate-y-1 animate-scale-in"
-              style={{ animationDelay: `${index * 100}ms` }}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <feature.icon className="w-10 h-10 text-primary" />
-                <Badge variant="outline" className="text-xs">
-                  {feature.status}
-                </Badge>
-              </div>
-              <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
-              <p className="text-muted-foreground text-sm">
-                {feature.description}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        {/* Live Queue Demo */}
-        <div className="max-w-6xl mx-auto animate-fade-in">
-          <div className="text-center mb-8">
+        {/* Live Queue Demo - Moved Up */}
+        <div className="max-w-6xl mx-auto mb-20 animate-fade-in">
+          <div className="text-center mb-10">
             <Badge className="mb-4 bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-900 dark:text-cyan-300">
               <Clock className="w-3 h-3 mr-1" />
               Live Demo
@@ -88,7 +67,34 @@ const QueueManagementSection = () => {
               Real-time simulation with animated updates every 3 seconds
             </p>
           </div>
-          <QueueDemo />
+          <div className="glass-panel p-8 rounded-[2rem] border-white/5 relative overflow-hidden">
+            <div className="absolute inset-0 bg-primary/5 pointer-events-none" />
+            <QueueDemo />
+          </div>
+        </div>
+
+        {/* Features - Moved Down */}
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+          {features.map((feature, index) => (
+            <div
+              key={index}
+              className="group p-8 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-md hover:bg-white/10 hover:border-primary/50 transition-all duration-300 hover:-translate-y-1"
+              style={{ animationDelay: `${index * 100}ms` }}
+            >
+              <div className="flex items-start justify-between mb-6">
+                <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center">
+                  <feature.icon className="w-6 h-6 text-primary" />
+                </div>
+                <Badge variant="outline" className="text-[10px] font-black uppercase tracking-widest border-primary/20 text-primary">
+                  {feature.status}
+                </Badge>
+              </div>
+              <h3 className="text-xl font-bold mb-3 text-white">{feature.title}</h3>
+              <p className="text-white/50 text-sm leading-relaxed">
+                {feature.description}
+              </p>
+            </div>
+          ))}
         </div>
       </div>
     </section>
